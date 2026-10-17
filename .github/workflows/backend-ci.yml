@@ -59,6 +59,8 @@ jobs:
         with:
           fetch-depth: 0
       - uses: zricethezav/gitleaks-action@v2.3.9
+        with:
+          args: --gitleaks-ignore-path=.gitleaksignore
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
