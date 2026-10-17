@@ -1,0 +1,104 @@
+name: Backend CI/CD
+
+on:
+  pull_request:
+    paths:
+      - "backend/**"
+  push:
+    branches: [main]
+    paths:
+      - "backend/**"
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_DB: smartcampus
+          POSTGRES_USER: campus
+          POSTGRES_PASSWORD: campus
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U campus -d smartcampus"
+          --health-interval 10s --health-timeout 5s --health-retries 5
+      redis:
+        image: redis:7
+        ports: ["6379:6379"]
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s --health-timeout 5s --health-retries 5
+    defaults:
+      run:
+        working-directory: backend
+    env:
+      SPRING_PROFILES_ACTIVE: test
+      DB_URL: jdbc:postgresql://localhost:5432/smartcampus
+      DB_USERNAME: campus
+      DB_PASSWORD: campus
+      REDIS_HOST: localhost
+      REDIS_PORT: 6379
+      JWT_SECRET: test-only-secret-key-that-is-at-least-32-chars
+    steps:
+      - uses: actions/checkout@v4.2.2
+      - uses: actions/setup-java@v4.7.1
+        with:
+          distribution: temurin
+          java-version: "21"
+          cache: maven
+      - run: ./mvnw --batch-mode verify
+
+  secrets:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4.2.2
+        with:
+          fetch-depth: 0
+      - uses: zricethezav/gitleaks-action@v2.3.9
+        with:
+          args: --gitleaks-ignore-path=.gitleaksignore
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  image:
+    needs: [test, secrets]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v4.2.2
+      - uses: docker/build-push-action@v6.18.0
+        with:
+          context: backend
+          file: backend/Dockerfile
+          load: true
+          tags: backend:${{ github.sha }}
+      - uses: aquasecurity/trivy-action@v0.36.0
+        with:
+          image-ref: backend:${{ github.sha }}
+          vuln-type: os,library
+          severity: HIGH,CRITICAL
+          ignore-unfixed: true
+          exit-code: "1"
+      - if: github.ref == 'refs/heads/main'
+        uses: docker/login-action@v3.4.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - if: github.ref == 'refs/heads/main'
+        name: Push image
+        shell: bash
+        env:
+          IMAGE: ghcr.io/${{ github.repository_owner }}/${{ github.event.repository.name }}/backend:${{ github.sha }}
+        run: |
+          image="$(echo "$IMAGE" | tr '[:upper:]' '[:lower:]')"
+          docker tag "backend:${GITHUB_SHA}" "$image"
+          docker push "$image"
+
+  # TODO: Add deployment when infra/ contains Helm values for the dev environment.
