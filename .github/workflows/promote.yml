@@ -1,0 +1,65 @@
+# Promote an already-built image to staging or prod by editing image.tag in Git. Never rebuilds.
+# Rollback = git revert of the promotion commit (see docs/ci-cd.md).
+name: Promote
+
+on:
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: Target environment
+        type: choice
+        options: [staging, prod]
+        required: true
+      image_tag:
+        description: Image tag to promote (full 40-character commit SHA, as deployed to dev)
+        type: string
+        required: true
+
+concurrency:
+  group: gitops-${{ inputs.environment }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  promote:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    # Required reviewers are configured on the "prod" GitHub Environment
+    environment: ${{ inputs.environment }}
+    permissions:
+      contents: write
+      packages: read
+    env:
+      TAG: ${{ inputs.image_tag }}
+      ENV_NAME: ${{ inputs.environment }}
+    steps:
+      - name: Validate tag
+        run: |
+          [[ "$TAG" =~ ^[0-9a-f]{40}$ ]] || { echo "::error::image_tag must be a full commit SHA"; exit 1; }
+      - uses: docker/login-action@74a5d142397b4f367a81961eba4e8cd7edddf772 # v3.4.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Image must already exist in GHCR
+        run: |
+          image="ghcr.io/${GITHUB_REPOSITORY,,}/backend:${TAG}"
+          docker buildx imagetools inspect "$image" > /dev/null \
+            || { echo "::error::$image does not exist; only images built by Backend CI/CD can be promoted"; exit 1; }
+          echo "Promoting $image to $ENV_NAME"
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          ref: main
+          token: ${{ secrets.GITOPS_TOKEN || github.token }}
+      - name: Set image.tag and commit
+        run: |
+          infra/scripts/set-image-tag.sh "infra/helm/values-${ENV_NAME}.yaml" "$TAG"
+          git config user.name "smartcampus-gitops[bot]"
+          git config user.email "gitops-bot@users.noreply.github.com"
+          git add "infra/helm/values-${ENV_NAME}.yaml"
+          git diff --cached --quiet && { echo "${ENV_NAME} already runs ${TAG}"; exit 0; }
+          git commit -m "chore(${ENV_NAME}): promote backend ${TAG::12}" -m "Promoted by @${GITHUB_ACTOR} via the Promote workflow."
+          for attempt in 1 2 3; do git pull --rebase origin main && git push origin HEAD:main && exit 0; sleep 5; done
+          exit 1

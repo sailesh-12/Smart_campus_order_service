@@ -1,0 +1,31 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: smartcampus-dev
+  namespace: argocd
+spec:
+  project: smartcampus
+  source:
+    repoURL: https://github.com/sailesh-12/Smart_campus_order_service.git
+    targetRevision: main
+    path: infra/helm/backend
+    helm:
+      releaseName: smartcampus
+      # Relative to the chart path: the environment values live next to the chart
+      valueFiles:
+        - ../values-dev.yaml
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: smartcampus-dev
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
+    retry:
+      limit: 5
+      backoff:
+        duration: 10s
+        factor: 2
+        maxDuration: 3m

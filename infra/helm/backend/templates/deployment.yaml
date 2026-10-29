@@ -1,0 +1,129 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "backend.fullname" . }}
+  labels:
+    {{- include "backend.labels" . | nindent 4 }}
+spec:
+  {{- if not .Values.autoscaling.enabled }}
+  replicas: {{ .Values.replicaCount }}
+  {{- end }}
+  revisionHistoryLimit: 5
+  selector:
+    matchLabels:
+      {{- include "backend.selectorLabels" . | nindent 6 }}
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      # Never drop below the current capacity; a new pod must be Ready before an old one stops
+      maxUnavailable: 0
+      maxSurge: 1
+  template:
+    metadata:
+      labels:
+        {{- include "backend.selectorLabels" . | nindent 8 }}
+      annotations:
+        # Restart pods when the non-secret config changes
+        checksum/config: {{ include (print $.Template.BasePath "/configmap.yaml") . | sha256sum }}
+        {{- with .Values.podAnnotations }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+    spec:
+      serviceAccountName: {{ include "backend.serviceAccountName" . }}
+      automountServiceAccountToken: false
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      terminationGracePeriodSeconds: {{ .Values.terminationGracePeriodSeconds }}
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10001
+        runAsGroup: 10001
+        fsGroup: 10001
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: backend
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          ports:
+            - name: http
+              containerPort: 8080
+              protocol: TCP
+          envFrom:
+            - configMapRef:
+                name: {{ include "backend.fullname" . }}
+          env:
+            {{- $s := .Values.secret.name }}
+            # Neon Postgres: pooled URL for the app, direct URL for Flyway migrations (optional)
+            {{- include "backend.secretEnv" (dict "env" "DB_URL" "key" "DB_URL" "secret" $s) | nindent 12 }}
+            {{- include "backend.secretEnv" (dict "env" "DB_USERNAME" "key" "DB_USERNAME" "secret" $s) | nindent 12 }}
+            {{- include "backend.secretEnv" (dict "env" "DB_PASSWORD" "key" "DB_PASSWORD" "secret" $s) | nindent 12 }}
+            {{- include "backend.secretEnv" (dict "env" "SPRING_FLYWAY_URL" "key" "DB_DIRECT_URL" "secret" $s "optional" true) | nindent 12 }}
+            {{- include "backend.secretEnv" (dict "env" "SPRING_FLYWAY_USER" "key" "DB_USERNAME" "secret" $s) | nindent 12 }}
+            {{- include "backend.secretEnv" (dict "env" "SPRING_FLYWAY_PASSWORD" "key" "DB_PASSWORD" "secret" $s) | nindent 12 }}
+            # Upstash Redis
+            {{- include "backend.secretEnv" (dict "env" "REDIS_HOST" "key" "REDIS_HOST" "secret" $s) | nindent 12 }}
+            {{- include "backend.secretEnv" (dict "env" "REDIS_PORT" "key" "REDIS_PORT" "secret" $s) | nindent 12 }}
+            {{- include "backend.secretEnv" (dict "env" "REDIS_PASSWORD" "key" "REDIS_PASSWORD" "secret" $s) | nindent 12 }}
+            {{- include "backend.secretEnv" (dict "env" "REDIS_SSL" "key" "REDIS_SSL" "secret" $s) | nindent 12 }}
+            # CloudAMQP RabbitMQ: one amqps:// URL with user, password and vhost
+            {{- include "backend.secretEnv" (dict "env" "SPRING_RABBITMQ_ADDRESSES" "key" "RABBIT_ADDRESSES" "secret" $s) | nindent 12 }}
+            # Application secrets
+            {{- include "backend.secretEnv" (dict "env" "JWT_SECRET" "key" "JWT_SECRET" "secret" $s) | nindent 12 }}
+            {{- include "backend.secretEnv" (dict "env" "PAYMENT_WEBHOOK_SECRET" "key" "PAYMENT_WEBHOOK_SECRET" "secret" $s) | nindent 12 }}
+            # SMTP for password-reset mail: required by the prod profile (app.mail.provider=smtp), optional elsewhere
+            {{- include "backend.secretEnv" (dict "env" "SPRING_MAIL_HOST" "key" "MAIL_HOST" "secret" $s "optional" true) | nindent 12 }}
+            {{- include "backend.secretEnv" (dict "env" "SPRING_MAIL_USERNAME" "key" "MAIL_USERNAME" "secret" $s "optional" true) | nindent 12 }}
+            {{- include "backend.secretEnv" (dict "env" "SPRING_MAIL_PASSWORD" "key" "MAIL_PASSWORD" "secret" $s "optional" true) | nindent 12 }}
+          startupProbe:
+            httpGet:
+              path: {{ .Values.probes.startup.path }}
+              port: http
+            periodSeconds: {{ .Values.probes.startup.periodSeconds }}
+            failureThreshold: {{ .Values.probes.startup.failureThreshold }}
+          livenessProbe:
+            httpGet:
+              path: {{ .Values.probes.liveness.path }}
+              port: http
+            periodSeconds: {{ .Values.probes.liveness.periodSeconds }}
+            failureThreshold: {{ .Values.probes.liveness.failureThreshold }}
+          readinessProbe:
+            httpGet:
+              path: {{ .Values.probes.readiness.path }}
+              port: http
+            periodSeconds: {{ .Values.probes.readiness.periodSeconds }}
+            failureThreshold: {{ .Values.probes.readiness.failureThreshold }}
+          lifecycle:
+            preStop:
+              exec:
+                command: ["sh", "-c", "sleep {{ .Values.preStopSleepSeconds }}"]
+          resources:
+            {{- toYaml .Values.resources | nindent 12 }}
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            privileged: false
+            capabilities:
+              drop: ["ALL"]
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
+      volumes:
+        # Writable scratch space (Tomcat, JVM); the root filesystem stays read-only
+        - name: tmp
+          emptyDir:
+            sizeLimit: 256Mi
+      {{- with .Values.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}

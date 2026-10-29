@@ -1,0 +1,32 @@
+# Dev environment (namespace smartcampus-dev). Argo CD syncs automatically.
+image:
+  # Managed by .github/workflows/backend-ci.yml (deploy-dev): only this line is edited by CI.
+  # The all-zero placeholder is replaced by the first successful build on main.
+  tag: "0000000000000000000000000000000000000000"
+
+autoscaling:
+  enabled: true
+  minReplicas: 1
+  maxReplicas: 2
+  targetCPUUtilizationPercentage: 70
+
+resources:
+  requests:
+    cpu: 200m
+    memory: 512Mi
+  limits:
+    cpu: "1"
+    memory: 1Gi
+
+config:
+  # dev profile: mock payment gateway (magic amounts) and the seed data (demo users, canteens, menus)
+  SPRING_PROFILES_ACTIVE: dev
+  # Live updates stay in the pod that holds the SSE connection; fine for one pod. If the HPA adds the
+  # second pod, a client may miss events until it reconnects (REST stays correct). See staging/prod.
+  APP_EVENTS_TRANSPORT: spring
+  APP_TIME_ZONE: Asia/Kolkata
+  SPRING_LIFECYCLE_TIMEOUTPERSHUTDOWNPHASE: 30s
+
+ingress:
+  # *.localtest.me resolves to 127.0.0.1, which suits kind/minikube with ingress-nginx on localhost
+  host: smartcampus.localtest.me

@@ -375,8 +375,20 @@ Activated via `app.payment.mock.magic-amounts=true`.
 
 ## Running
 
+**Credentials are not in the repository.** The dev profile reads the database, Redis and RabbitMQ settings from
+environment variables, or from `backend/.env` (gitignored, loaded via `spring.config.import`). Copy
+`.env.example` to `.env` and fill in the Neon / Upstash / CloudAMQP values, or run against throwaway local
+containers with `TestBackendApplication` (Docker required). Tests never read `.env`.
+
+| Command | What runs |
+|---|---|
+| `./mvnw test` | unit tests (`*Test`) + JaCoCo report in `target/site/jacoco` |
+| `./mvnw verify` | unit + integration tests (`integration/*IT`, needs Docker and a Redis on localhost:6379) |
+
+CI/CD (GitHub Actions, Helm, Argo CD) is described in [`docs/ci-cd.md`](../docs/ci-cd.md).
+
 ```bash
-# Prerequisites: PostgreSQL, Redis running locally
+# Prerequisites: PostgreSQL, Redis running locally (or backend/.env pointing at hosted services)
 
 # Linux / macOS
 ./mvnw spring-boot:run -Dspring-boot.run.profiles=dev

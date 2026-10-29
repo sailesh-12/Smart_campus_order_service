@@ -35,6 +35,14 @@
 		<jackson-bom.version>3.1.7</jackson-bom.version>
 		<rabbit-amqp-client.version>5.34.0</rabbit-amqp-client.version>
 		<tomcat.version>11.0.25</tomcat.version>
+		<!-- CI: coverage and static analysis -->
+		<jacoco.version>0.8.16</jacoco.version>
+		<sonar-maven-plugin.version>5.8.0.7211</sonar-maven-plugin.version>
+		<sonar.projectKey>smartcampus-backend</sonar.projectKey>
+		<sonar.projectName>Smart Campus Backend</sonar.projectName>
+		<sonar.coverage.jacoco.xmlReportPaths>${project.build.directory}/site/jacoco/jacoco.xml,${project.build.directory}/site/jacoco-it/jacoco.xml</sonar.coverage.jacoco.xmlReportPaths>
+		<!-- Tests never read backend/.env (real credentials); see spring.config.import in application.properties -->
+		<test.env.file>${project.build.directory}/no-env-file-for-tests</test.env.file>
 	</properties>
 	<dependencies>
 		<dependency>
@@ -241,7 +249,93 @@
 					</execution>
 				</executions>
 			</plugin>
+
+			<!-- Unit tests: *Test classes, no Spring context, no containers, no network -->
+			<plugin>
+				<groupId>org.apache.maven.plugins</groupId>
+				<artifactId>maven-surefire-plugin</artifactId>
+				<configuration>
+					<includes>
+						<include>**/*Test.java</include>
+					</includes>
+					<excludes>
+						<exclude>**/integration/**</exclude>
+					</excludes>
+					<systemPropertyVariables>
+						<spring.profiles.active>test</spring.profiles.active>
+						<SMARTCAMPUS_ENV_FILE>${test.env.file}</SMARTCAMPUS_ENV_FILE>
+					</systemPropertyVariables>
+				</configuration>
+			</plugin>
+
+			<!-- Integration tests: *IT classes in the integration package (Testcontainers + a Redis service) -->
+			<plugin>
+				<groupId>org.apache.maven.plugins</groupId>
+				<artifactId>maven-failsafe-plugin</artifactId>
+				<configuration>
+					<includes>
+						<include>**/integration/**/*IT.java</include>
+					</includes>
+					<systemPropertyVariables>
+						<spring.profiles.active>test</spring.profiles.active>
+						<SMARTCAMPUS_ENV_FILE>${test.env.file}</SMARTCAMPUS_ENV_FILE>
+					</systemPropertyVariables>
+				</configuration>
+				<executions>
+					<execution>
+						<goals>
+							<goal>integration-test</goal>
+							<goal>verify</goal>
+						</goals>
+					</execution>
+				</executions>
+			</plugin>
+
+			<!-- Coverage: unit tests -> target/site/jacoco, integration tests -> target/site/jacoco-it (SonarQube reads both) -->
+			<plugin>
+				<groupId>org.jacoco</groupId>
+				<artifactId>jacoco-maven-plugin</artifactId>
+				<version>${jacoco.version}</version>
+				<executions>
+					<execution>
+						<id>prepare-unit</id>
+						<goals>
+							<goal>prepare-agent</goal>
+						</goals>
+					</execution>
+					<execution>
+						<id>report-unit</id>
+						<phase>test</phase>
+						<goals>
+							<goal>report</goal>
+						</goals>
+					</execution>
+					<execution>
+						<id>prepare-integration</id>
+						<goals>
+							<goal>prepare-agent-integration</goal>
+						</goals>
+					</execution>
+					<execution>
+						<id>report-integration</id>
+						<phase>post-integration-test</phase>
+						<goals>
+							<goal>report-integration</goal>
+						</goals>
+					</execution>
+				</executions>
+			</plugin>
 		</plugins>
+
+		<pluginManagement>
+			<plugins>
+				<plugin>
+					<groupId>org.sonarsource.scanner.maven</groupId>
+					<artifactId>sonar-maven-plugin</artifactId>
+					<version>${sonar-maven-plugin.version}</version>
+				</plugin>
+			</plugins>
+		</pluginManagement>
 	</build>
 
 </project>

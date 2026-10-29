@@ -1,0 +1,88 @@
+# Defaults for the Smart Campus backend chart. Each environment overrides these in infra/helm/values-<env>.yaml,
+# which live outside the chart so CI can edit image.tag there.
+
+image:
+  repository: ghcr.io/sailesh-12/smart_campus_order_service/backend
+  # Always a full commit SHA (set by CI in the environment values files); never "latest"
+  tag: "set-in-environment-values-file"
+  pullPolicy: IfNotPresent
+
+# Needed only if the GHCR package is private (see infra/README.md)
+imagePullSecrets: []
+
+# Used only when autoscaling is disabled
+replicaCount: 2
+
+autoscaling:
+  enabled: true
+  minReplicas: 2
+  maxReplicas: 6
+  targetCPUUtilizationPercentage: 70 # needs metrics-server
+
+podDisruptionBudget:
+  enabled: true
+  minAvailable: 1
+
+serviceAccount:
+  create: true
+  name: ""
+
+resources:
+  requests:
+    cpu: 250m
+    memory: 512Mi
+  limits:
+    cpu: "1"
+    memory: 1Gi
+
+# Non-secret configuration, rendered into a ConfigMap and loaded with envFrom.
+# Spring maps environment variables to properties (APP_EVENTS_TRANSPORT -> app.events.transport).
+config:
+  SPRING_PROFILES_ACTIVE: prod
+  APP_EVENTS_TRANSPORT: spring
+  APP_TIME_ZONE: Asia/Kolkata
+  # Keep in-flight requests below terminationGracePeriodSeconds (40 s) minus the preStop sleep
+  SPRING_LIFECYCLE_TIMEOUTPERSHUTDOWNPHASE: 30s
+
+# Secret values are never in this chart. The Deployment reads these keys from an existing Secret,
+# created by infra/scripts/create-secrets.sh (or Sealed Secrets / External Secrets later).
+secret:
+  name: smartcampus-secrets
+
+service:
+  type: ClusterIP
+  port: 80
+
+ingress:
+  enabled: true
+  className: nginx
+  host: smartcampus.localtest.me
+  tls: []
+  # Live order updates are Server-Sent Events: never buffer them, and keep idle streams open for an hour
+  annotations:
+    nginx.ingress.kubernetes.io/proxy-buffering: "off"
+    nginx.ingress.kubernetes.io/proxy-read-timeout: "3600"
+    nginx.ingress.kubernetes.io/proxy-send-timeout: "3600"
+
+probes:
+  startup:
+    path: /actuator/health/liveness
+    periodSeconds: 5
+    failureThreshold: 36 # up to 3 minutes for Flyway migrations and the first connection to managed services
+  liveness:
+    path: /actuator/health/liveness
+    periodSeconds: 10
+    failureThreshold: 3
+  readiness:
+    path: /actuator/health/readiness
+    periodSeconds: 5
+    failureThreshold: 3
+
+terminationGracePeriodSeconds: 40
+# Lets the ingress and endpoints stop sending traffic before Spring starts its graceful shutdown
+preStopSleepSeconds: 5
+
+podAnnotations: {}
+nodeSelector: {}
+tolerations: []
+affinity: {}

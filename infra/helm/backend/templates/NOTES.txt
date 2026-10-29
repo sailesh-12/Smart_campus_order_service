@@ -1,0 +1,9 @@
+Smart Campus backend {{ .Values.image.tag | trunc 12 }} in namespace {{ .Release.Namespace }}.
+
+Health:   kubectl -n {{ .Release.Namespace }} get pods -l app.kubernetes.io/instance={{ .Release.Name }}
+Rollout:  kubectl -n {{ .Release.Namespace }} rollout status deployment/{{ include "backend.fullname" . }}
+{{- if .Values.ingress.enabled }}
+URL:      http://{{ .Values.ingress.host }}/actuator/health/readiness
+{{- end }}
+
+Requires the Secret "{{ .Values.secret.name }}" in this namespace (infra/scripts/create-secrets.sh).
