@@ -28,24 +28,28 @@ public class VendorOrderController {
     private final VendorService vendorService;
     private final CurrentUser currentUser;
 
+    /** Without ?status the active board (PAID, ACCEPTED, PREPARING, READY) is returned. */
     @GetMapping("/vendor/orders")
     @PreAuthorize("hasRole('VENDOR')")
     public ResponseEntity<List<OrderResponse>> getVendorOrders(
             @RequestParam(required = false) OrderStatus status) {
-        throw new UnsupportedOperationException("TODO");
+        long vendorId = vendorService.vendorIdOf(currentUser.id());
+        return ResponseEntity.ok(orderService.getVendorOrders(vendorId, status));
     }
 
     @PatchMapping("/orders/{id}/status")
     @PreAuthorize("hasRole('VENDOR')")
-    public ResponseEntity<Void> updateOrderStatus(
+    public ResponseEntity<OrderResponse> updateOrderStatus(
             @PathVariable long id,
             @Valid @RequestBody UpdateOrderStatusRequest request) {
-        throw new UnsupportedOperationException("TODO");
+        return ResponseEntity.ok(orderService.updateOrderStatus(id, request.status(), currentUser.id()));
     }
 
     @PostMapping("/orders/pickup/verify")
     @PreAuthorize("hasRole('VENDOR')")
-    public ResponseEntity<Void> verifyPickup(@Valid @RequestBody VerifyPickupRequest request) {
-        throw new UnsupportedOperationException("TODO");
+    public ResponseEntity<OrderResponse> verifyPickup(@Valid @RequestBody VerifyPickupRequest request) {
+        long vendorId = vendorService.vendorIdOf(currentUser.id());
+        long orderId = pickupService.verifyPickup(vendorId, request);
+        return ResponseEntity.ok(orderService.getOrderById(orderId, currentUser.id(), "VENDOR"));
     }
 }

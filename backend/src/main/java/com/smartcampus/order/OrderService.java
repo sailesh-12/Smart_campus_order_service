@@ -3,8 +3,11 @@ package com.smartcampus.order;
 import com.smartcampus.order.dto.CreateOrderRequest;
 import com.smartcampus.order.dto.OrderResponse;
 import com.smartcampus.order.dto.PayOrderResponse;
+import com.smartcampus.order.dto.PlaceOrderResult;
+import com.smartcampus.order.dto.VendorOrderStats;
 import com.smartcampus.order.events.OrderStatusChanged;
 
+import java.time.Instant;
 import java.util.List;
 
 /**
@@ -20,7 +23,8 @@ public interface OrderService {
      * - Validates user is active.
      * - Enforces hoarding limit: student must have fewer than app.order.max-unpaid-per-student
      *   unpaid orders (PENDING_PAYMENT), otherwise throws 409 TOO_MANY_UNPAID_ORDERS.
-     * - Enforces rate limit at app.order.rate-limit-per-minute per student (otherwise 429 RATE_LIMITED).
+     *   Placements of one student are serialized with a transaction-scoped advisory lock so the count is exact.
+     * - Enforces rate limit at app.order.rate-limit-per-minute per student (otherwise 429 RATE_LIMITED + Retry-After).
      * - Validates vendor is open and not suspended.
      * - Validates all items belong to that single vendor, are available, and quantities between 1 and app.order.max-qty-per-item.
      * - Merges duplicate lines of the same menu item.
@@ -37,14 +41,10 @@ public interface OrderService {
      * - After commit, publishes OrderStatusChanged and MenuItemUpdated events.
      * - Returns 201 with holdExpiresAt, estimate, and payment id. Pickup code and QR secret are NOT generated yet.
      * - Idempotency (5.7): unique constraint on (student_id, idempotency_key). Same key + same request returns existing order
-     *   (200, Idempotent-Replayed: true). Same key + different payload returns 409 IDEMPOTENCY_KEY_REUSED.
-     *
-     * @param request order details
-     * @param studentId calling student user id
-     * @param idempotencyKey client unique idempotency key
-     * @return OrderResponse
+     *   (200, Idempotent-Replayed: true), exempt from the hoarding and rate limits. Same key + different payload returns
+     *   409 IDEMPOTENCY_KEY_REUSED. Two identical requests racing: the loser catches the unique violation and replays.
      */
-    OrderResponse placeOrder(CreateOrderRequest request, long studentId, String idempotencyKey);
+    PlaceOrderResult placeOrder(CreateOrderRequest request, long studentId, String idempotencyKey);
 
     /**
      * Business Rule (5.3):
@@ -57,10 +57,7 @@ public interface OrderService {
      * - Definite DECLINE: payment moves to FAILED, order becomes CANCELLED, stock and slot restored once (HTTP 402 PAYMENT_DECLINED).
      * - Timeout / Network error / UNKNOWN: payment moves to UNCONFIRMED, order stays PENDING_PAYMENT, stock KEPT held (HTTP 202 PAYMENT_UNCONFIRMED).
      * - Calling /pay again while UNCONFIRMED does not create a second charge; returns 202 again.
-     *
-     * @param orderId order identifier
-     * @param studentId calling student user id
-     * @return PayOrderResponse
+     * - Calling /pay again after success returns the paid state (200) without charging again.
      */
     PayOrderResponse payOrder(long orderId, long studentId);
 
@@ -68,28 +65,22 @@ public interface OrderService {
      * Business Rule (5.6):
      * Cancels an order.
      * Allowed in PENDING_PAYMENT (only if payment is NOT UNCONFIRMED, otherwise 409 PAYMENT_UNCONFIRMED) and in PAID.
-     * Never allowed after ACCEPTED.
-     * If order was PAID, initiates gateway refund with reason CANCELLED.
+     * Never allowed after ACCEPTED (409 INVALID_TRANSITION).
+     * If order was PAID, a gateway refund with reason CANCELLED runs right after commit.
      * Releases stock and booked slot once.
-     *
-     * @param orderId order identifier
-     * @param studentId calling student user id
      */
-    void cancelOrder(long orderId, long studentId);
+    OrderResponse cancelOrder(long orderId, long studentId);
 
     /**
      * Business Rule (5.6 & 5.7):
-     * Vendor updates order status along the state machine.
+     * Vendor updates order status along the state machine (ACCEPTED, PREPARING, READY or REJECTED;
+     * COLLECTED goes through pickup verification and UNCOLLECTED through the job).
      * - Verifies vendor ownership of order.
-     * - Uses OrderStatus.canTransitionTo and @Version column to block concurrent/invalid status changes.
-     * - Vendor reject (PAID or ACCEPTED to REJECTED): initiates gateway refund (REJECTED) and restores stock once.
+     * - Uses OrderStatus.canTransitionTo and a conditional update (which bumps @Version) to block concurrent/invalid changes.
+     * - Vendor reject (PAID or ACCEPTED to REJECTED): refund (REJECTED) after commit and restores stock once.
      * - Records accepted_at, preparing_at, and ready_at timestamps.
-     *
-     * @param orderId order identifier
-     * @param newStatus requested target state
-     * @param vendorUserId calling vendor user id
      */
-    void updateOrderStatus(long orderId, OrderStatus newStatus, long vendorUserId);
+    OrderResponse updateOrderStatus(long orderId, OrderStatus newStatus, long vendorUserId);
 
     /**
      * Required by NotificationController (Section 3):
@@ -97,9 +88,34 @@ public interface OrderService {
      */
     OrderStatusChanged currentStatusEvent(long orderId, long userId);
 
-    OrderResponse getOrderById(long orderId, long userId, boolean isVendorOrAdmin);
+    /**
+     * Ownership rule (Section 7): a student sees only their own orders, a vendor only their shop's, an admin all.
+     *
+     * @param role the caller's role name (STUDENT, VENDOR or ADMIN)
+     */
+    OrderResponse getOrderById(long orderId, long userId, String role);
 
     List<OrderResponse> getStudentOrders(long studentId);
 
+    /**
+     * Vendor board. With no status: the active columns PAID, ACCEPTED, PREPARING, READY
+     * (UNCOLLECTED is hidden there, but listed with ?status=UNCOLLECTED).
+     */
     List<OrderResponse> getVendorOrders(long vendorId, OrderStatus status);
+
+    /** Admin: most recent orders across campus. */
+    List<OrderResponse> getRecentOrders(int limit);
+
+    /** Rebuilds the cart of a previous order of this student (current prices) and places it as a new order. */
+    PlaceOrderResult reorder(long orderId, long studentId, String idempotencyKey);
+
+    long studentIdOf(long orderId);
+
+    OrderStatus statusOf(long orderId);
+
+    VendorOrderStats getVendorStats(long vendorId, Instant from, Instant to, int topItems);
+
+    java.math.BigDecimal totalRevenue();
+
+    long totalOrders();
 }

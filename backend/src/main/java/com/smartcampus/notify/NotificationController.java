@@ -42,14 +42,18 @@ public class NotificationController {
     public SseEmitter vendorStream(HttpServletResponse response) {
         long vendorId = vendorService.vendorIdOf(currentUser.id());
         disableBuffering(response);
-        return registry.subscribeToVendor(vendorId);
+        SseEmitter emitter = registry.subscribeToVendor(vendorId);
+        registry.sendHello(emitter); // flush headers now, not at the first heartbeat
+        return emitter;
     }
 
     /** Browsing/Menu: live stock and availability updates for a vendor's menu. */
     @GetMapping(value = "/vendors/{id}/menu/events", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
     public SseEmitter menuStream(@PathVariable long id, HttpServletResponse response) {
         disableBuffering(response);
-        return registry.subscribeToMenu(id);
+        SseEmitter emitter = registry.subscribeToMenu(id);
+        registry.sendHello(emitter);
+        return emitter;
     }
 
     private void disableBuffering(HttpServletResponse response) {

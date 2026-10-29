@@ -42,8 +42,9 @@ public class RateLimiter {
             }
             if (count != null && count > limitPerMinute) {
                 log.warn("Rate limit exceeded for key={}: count={}, limit={}", key, count, limitPerMinute);
-                throw new ApiException("RATE_LIMITED", HttpStatus.TOO_MANY_REQUESTS,
-                        "Rate limit exceeded. Please wait before retrying.");
+                Long ttl = redisTemplate.getExpire(key);
+                long retryAfter = (ttl == null || ttl <= 0) ? 60 : ttl;
+                throw ApiException.rateLimited("Rate limit exceeded. Please wait before retrying.", retryAfter);
             }
         } catch (ApiException e) {
             throw e;
@@ -52,8 +53,8 @@ public class RateLimiter {
                 log.warn("Redis unavailable during rate limit check for {}. Failing open (allowing request). Error: {}", key, e.getMessage());
             } else {
                 log.error("Redis unavailable during auth rate limit check for {}. Failing closed (blocking request). Error: {}", key, e.getMessage());
-                throw new ApiException("RATE_LIMITED", HttpStatus.TOO_MANY_REQUESTS,
-                        "Authentication rate limit check temporarily unavailable. Please try again shortly.");
+                throw ApiException.rateLimited(
+                        "Authentication rate limit check temporarily unavailable. Please try again shortly.", 30);
             }
         }
     }

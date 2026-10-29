@@ -24,4 +24,6 @@ public interface UserService {
     void setPasswordHash(long userId, String passwordHash);
 
     void setActiveStatus(long userId, boolean active);
+
+    long countActiveByRole(Role role);
 }

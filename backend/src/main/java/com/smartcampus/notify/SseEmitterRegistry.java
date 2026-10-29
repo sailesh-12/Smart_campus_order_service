@@ -66,6 +66,20 @@ public class SseEmitterRegistry {
         }
     }
 
+    /**
+     * Sends a comment line right after subscribing. Until the first byte is written the response headers are not
+     * sent, and clients (fetch-based SSE) only see the stream as open after the next heartbeat, up to 25 s later.
+     */
+    public void sendHello(SseEmitter emitter) {
+        try {
+            synchronized (emitter) {
+                emitter.send(SseEmitter.event().comment("connected"));
+            }
+        } catch (IOException | IllegalStateException e) {
+            emitter.completeWithError(e);
+        }
+    }
+
     /** Comment line every 25 s so proxies and load balancers don't close idle connections. */
     @Scheduled(fixedRate = 25_000)
     public void heartbeat() {

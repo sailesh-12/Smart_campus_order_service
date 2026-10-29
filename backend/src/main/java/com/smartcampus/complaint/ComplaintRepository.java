@@ -3,6 +3,7 @@ package com.smartcampus.complaint;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.stereotype.Repository;
 
+import java.util.Collection;
 import java.util.List;
 
 @Repository
@@ -13,4 +14,8 @@ public interface ComplaintRepository extends JpaRepository<Complaint, Long> {
     List<Complaint> findByOrderId(Long orderId);
 
     List<Complaint> findByStatusOrderByCreatedAtDesc(ComplaintStatus status);
+
+    List<Complaint> findAllByOrderByCreatedAtDesc();
+
+    long countByStatusIn(Collection<ComplaintStatus> statuses);
 }

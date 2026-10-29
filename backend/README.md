@@ -52,13 +52,13 @@ com.smartcampus/
 | `audit` | — |
 | `user` | `common` |
 | `auth` | `common`, `user` |
-| `vendor` | `common`, `user` |
+| `vendor` | `common`, `user`, `audit` |
 | `menu` | `common`, `vendor` |
-| `payment` | `common`, `user` |
-| `order` | `common`, `menu`, `vendor`, `payment` |
-| `notify` | `common`, `order`, `vendor`, `payment` |
-| `complaint` | `common`, `order`, `payment` |
-| `analytics` | `common`, `vendor`, `order`, `audit` |
+| `payment` | `common`, `user`, `audit` |
+| `order` | `common`, `user`, `menu`, `vendor`, `payment` |
+| `notify` | `common`, `order`, `vendor`, `payment`, `menu` (events only) |
+| `complaint` | `common`, `order`, `payment`, `audit` |
+| `analytics` | `common`, `vendor`, `order`, `audit`, `user`, `payment`, `complaint` |
 
 > [!IMPORTANT]
 > **menu, vendor, and payment must NEVER import order.** Cross-module needs are handled via interfaces:
@@ -353,9 +353,9 @@ Activated via `app.payment.mock.magic-amounts=true`.
 |---|---|
 | Any other value | Immediate SUCCESS |
 | .01 | Definite DECLINE |
-| .02 | UNKNOWN now → SUCCESS after 20s (simulates delayed webhook) |
+| .02 | UNKNOWN now → SUCCESS after 20s, delivered through the webhook processing path |
 | .03 | UNKNOWN now → FAILED after 20s |
-| .04 | UNKNOWN now → SUCCESS after 310s (after hold expires → late success, must be auto-refunded) |
+| .04 | UNKNOWN now → SUCCESS after `unconfirmed-max-minutes` + 90 s (the expiry job only expires an UNCONFIRMED order after that cap, so this is a true late success and is auto-refunded) |
 | .05 | Immediate SUCCESS, but refund call fails (REFUND_FAILED) |
 
 ---
@@ -400,6 +400,23 @@ Activated via `app.payment.mock.magic-amounts=true`.
 5. **Full refunds only**: Partial refunds are explicitly out of scope per specification.
 6. **Reorder endpoint**: `POST /orders/{id}/reorder` is declared but optional; it re-creates a new order from a previous one's items.
 7. **Admin orders endpoint**: `GET /admin/orders` is declared but optional.
-8. **Vendor analytics date range**: When `from`/`to` are not provided, defaults to the last 30 days (to be decided during implementation).
+8. **Vendor analytics date range**: When `from`/`to` are not provided, the last 30 days including today are used. Dates are in the campus time zone and both ends are inclusive.
 9. **Clock bean**: All time operations use an injected `java.time.Clock` bean so tests can freeze or advance time.
-10. **CORS origins**: Configured for `localhost:3000` (React dev), `localhost:8081/19000/19006` (Expo), and `exp://*`.
+10. **CORS origins**: Configured for `localhost:3000` (vendor dashboard), `localhost:3001` (admin dashboard), `localhost:8081/19000/19006` (Expo), and `exp://*`.
+11. **Campus time zone**: `app.time-zone` (default `Asia/Kolkata`) decides the campus "day" (pickup codes are unique per vendor per day) and the 5-minute slot grid. Instants are stored in UTC as before.
+12. **Pickup slots**: 5-minute slots between `app.slots.open-time` (08:00) and `app.slots.close-time` (21:00), at most `app.slots.max-days-ahead` (2) days ahead. A slot that is off the grid, outside the window, or before "now + low estimate" (rounded up) is a 400 `VALIDATION_ERROR` on `pickupSlotStart`. The order's `pickup_date` is the slot's date (or today without a slot).
+13. **Webhook signature**: `X-Webhook-Signature` = lowercase hex HMAC-SHA256 (key `app.payment.webhook-secret`) of `eventId + "." + paymentId + "." + status`; an optional `sha256=` prefix is accepted. Signing these canonical fields keeps verification independent of JSON formatting. Unknown payment ids and non-final statuses get 200 and are only recorded.
+14. **Refunds run after commit**: cancel, reject and late-success refunds are requested inside the order transaction but the gateway call happens after commit (`RefundRequested` event, async). A failure ends in `REFUND_FAILED` and is retried by reconciliation, so nothing is lost if the process dies in between.
+15. **Admin retry-refund** does not count against `refund-max-attempts`; automatic attempts do. Every admin money action writes an `admin_actions` row, including failed attempts (`RETRY_REFUND_FAILED`, `MANUAL_REFUND_FAILED`). A manual refund links its complaint only once the refund has actually succeeded.
+16. **Admin resolve rules**: allowed for `REFUND_FAILED`, and for `UNCONFIRMED` payments whose `created_at` is older than `unconfirmed-max-minutes`; anything else (or an already resolved issue) is 409 `INVALID_TRANSITION`. Resolved payments are skipped by reconciliation.
+17. **`PaymentRefunded` carries no student id**: the payment module may not import `order`, so listeners resolve the student from `orderId`.
+18. **Hoarding race**: order placement takes a per-student `pg_advisory_xact_lock`, so parallel requests cannot both pass the unpaid-order count.
+19. **Menu deletes**: an item that appears in any past order is kept for order history; `DELETE /menu-items/{id}` then returns 409 `ITEM_IN_USE` and the vendor should mark it unavailable.
+20. **Vendor settings**: vendors may change open/closed, rush mode, prep minutes, slot size and parallel capacity of their own shop; renaming and suspending are admin-only. `GET /vendors` hides suspended shops; `GET /admin/vendors` lists all. `estimatedWaitMinutes` = queue wait + the vendor's average prep minutes.
+21. **Vendor status changes**: `PATCH /orders/{id}/status` accepts ACCEPTED, PREPARING, READY and REJECTED. COLLECTED goes through `POST /orders/pickup/verify` (QR secret, or code for today/yesterday); UNCOLLECTED is set only by the job.
+22. **`/pay` when already paid** returns 200 with the paid state (no second charge). `/pay` on a cancelled/expired order is 409 `INVALID_TRANSITION`.
+23. **Pickup code collisions**: codes are checked before use (letter + 2 digits, then 3 digits if busy). A parallel payment taking the same code in the same instant makes the unique index roll the outcome back; the next `/pay`, webhook or reconciliation run applies it again.
+24. **No real gateway yet**: with `app.payment.mock.magic-amounts=false` (prod) an `UnconfiguredPaymentGateway` is used. It never moves money: charges stay UNCONFIRMED and refunds fail into REFUND_FAILED, so they surface in the admin issues list. Replace it with the real provider.
+25. **Mock gateway state is in memory**: after a restart, unfinished mock payments answer UNKNOWN until an admin resolves them.
+26. **Revenue** (analytics) counts orders in PAID, ACCEPTED, PREPARING, READY, COLLECTED and UNCOLLECTED; manual refunds on such orders are not subtracted.
+27. **Integration tests**: scenarios that need PostgreSQL/Redis (stock races, expiry racing webhook, ownership, push, uncollected job) are still `@Disabled("TODO")` and need Docker for Testcontainers. Pure logic (state machine, ETA maths, idempotency, webhook signature/dedupe, mock gateway, refund rules, payment outcome choke point, slot rules) is covered by unit tests.

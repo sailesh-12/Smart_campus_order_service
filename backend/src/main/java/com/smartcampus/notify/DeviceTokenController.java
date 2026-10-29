@@ -22,11 +22,14 @@ public class DeviceTokenController {
 
     @PostMapping
     public ResponseEntity<Void> registerDevice(@Valid @RequestBody RegisterDeviceRequest request) {
-        throw new UnsupportedOperationException("TODO");
+        deviceTokenService.registerToken(currentUser.id(), request);
+        return ResponseEntity.ok().build();
     }
 
+    /** Called on logout. Deleting a token that is not yours (or is unknown) is a silent no-op. */
     @DeleteMapping("/{token}")
     public ResponseEntity<Void> unregisterDevice(@PathVariable String token) {
-        throw new UnsupportedOperationException("TODO");
+        deviceTokenService.deleteToken(token, currentUser.id());
+        return ResponseEntity.ok().build();
     }
 }

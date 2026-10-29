@@ -29,20 +29,20 @@ public class ComplaintController {
     @PostMapping("/complaints")
     @PreAuthorize("hasRole('STUDENT')")
     public ResponseEntity<ComplaintResponse> createComplaint(@Valid @RequestBody CreateComplaintRequest request) {
-        throw new UnsupportedOperationException("TODO");
+        return ResponseEntity.status(HttpStatus.CREATED).body(complaintService.createComplaint(request, currentUser.id()));
     }
 
     @GetMapping("/complaints/me")
     @PreAuthorize("hasRole('STUDENT')")
     public ResponseEntity<List<ComplaintResponse>> getMyComplaints() {
-        throw new UnsupportedOperationException("TODO");
+        return ResponseEntity.ok(complaintService.getMyComplaints(currentUser.id()));
     }
 
     @GetMapping("/admin/complaints")
     @PreAuthorize("hasRole('ADMIN')")
     public ResponseEntity<List<ComplaintResponse>> getComplaintsAdmin(
             @RequestParam(required = false) ComplaintStatus status) {
-        throw new UnsupportedOperationException("TODO");
+        return ResponseEntity.ok(complaintService.getComplaintsAdmin(status));
     }
 
     @PatchMapping("/admin/complaints/{id}")
@@ -50,6 +50,6 @@ public class ComplaintController {
     public ResponseEntity<ComplaintResponse> updateComplaint(
             @PathVariable long id,
             @Valid @RequestBody UpdateComplaintRequest request) {
-        throw new UnsupportedOperationException("TODO");
+        return ResponseEntity.ok(complaintService.updateComplaintAdmin(id, request, currentUser.id()));
     }
 }

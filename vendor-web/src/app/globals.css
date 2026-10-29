@@ -1,0 +1,27 @@
+@import "tailwindcss";
+
+@theme {
+  --color-navy: #0b1f3a;
+  --color-navy-soft: #1b3358;
+  --color-primary: #ff7a1a;
+  --color-primary-dark: #e5650a;
+  --color-page: #f3f6fb;
+  --color-line: #d9e1ec;
+  --color-muted: #5b6b82;
+  --radius-card: 12px;
+  --font-sans: var(--font-geist-sans), system-ui, sans-serif;
+}
+
+body {
+  background: var(--color-page);
+  color: var(--color-navy);
+}
+
+@keyframes flash-new {
+  0%, 100% { box-shadow: 0 0 0 0 rgb(255 122 26 / 0); }
+  50% { box-shadow: 0 0 0 6px rgb(255 122 26 / 0.55); }
+}
+
+.flash-new {
+  animation: flash-new 0.9s ease-in-out 4;
+}

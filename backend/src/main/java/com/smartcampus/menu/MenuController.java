@@ -32,19 +32,19 @@ public class MenuController {
 
     @GetMapping("/vendors/{id}/menu")
     public ResponseEntity<List<MenuItemStudentResponse>> getMenuForStudents(@PathVariable long id) {
-        throw new UnsupportedOperationException("TODO");
+        return ResponseEntity.ok(menuService.getMenuForStudents(id));
     }
 
     @GetMapping("/vendor/menu")
     @PreAuthorize("hasRole('VENDOR')")
     public ResponseEntity<List<MenuItemVendorResponse>> getMyMenu() {
-        throw new UnsupportedOperationException("TODO");
+        return ResponseEntity.ok(menuService.getMenuForVendor(currentUser.id()));
     }
 
     @PostMapping("/menu-items")
     @PreAuthorize("hasRole('VENDOR')")
     public ResponseEntity<MenuItemVendorResponse> createMenuItem(@Valid @RequestBody CreateMenuItemRequest request) {
-        throw new UnsupportedOperationException("TODO");
+        return ResponseEntity.status(HttpStatus.CREATED).body(menuService.createMenuItem(request, currentUser.id()));
     }
 
     @PutMapping("/menu-items/{id}")
@@ -52,7 +52,7 @@ public class MenuController {
     public ResponseEntity<MenuItemVendorResponse> updateMenuItem(
             @PathVariable long id,
             @Valid @RequestBody UpdateMenuItemRequest request) {
-        throw new UnsupportedOperationException("TODO");
+        return ResponseEntity.ok(menuService.updateMenuItem(id, request, currentUser.id()));
     }
 
     @PatchMapping("/menu-items/{id}/availability")
@@ -60,7 +60,7 @@ public class MenuController {
     public ResponseEntity<MenuItemVendorResponse> updateAvailability(
             @PathVariable long id,
             @Valid @RequestBody UpdateAvailabilityRequest request) {
-        throw new UnsupportedOperationException("TODO");
+        return ResponseEntity.ok(menuService.updateAvailability(id, request.isAvailable(), currentUser.id()));
     }
 
     @PatchMapping("/menu-items/{id}/stock")
@@ -68,12 +68,13 @@ public class MenuController {
     public ResponseEntity<MenuItemVendorResponse> updateStock(
             @PathVariable long id,
             @Valid @RequestBody UpdateStockRequest request) {
-        throw new UnsupportedOperationException("TODO");
+        return ResponseEntity.ok(menuService.updateStock(id, request.stockQty(), currentUser.id()));
     }
 
     @DeleteMapping("/menu-items/{id}")
     @PreAuthorize("hasRole('VENDOR')")
     public ResponseEntity<Void> deleteMenuItem(@PathVariable long id) {
-        throw new UnsupportedOperationException("TODO");
+        menuService.deleteMenuItem(id, currentUser.id());
+        return ResponseEntity.noContent().build();
     }
 }

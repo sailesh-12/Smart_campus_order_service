@@ -11,5 +11,11 @@ public interface VendorRepository extends JpaRepository<Vendor, Long> {
 
     Optional<Vendor> findByOwnerUserId(Long ownerUserId);
 
-    List<Vendor> findByIsSuspendedFalse();
+    boolean existsByOwnerUserId(Long ownerUserId);
+
+    List<Vendor> findByIsSuspendedFalseOrderByIdAsc();
+
+    List<Vendor> findAllByOrderByIdAsc();
+
+    long countByIsSuspendedFalse();
 }
