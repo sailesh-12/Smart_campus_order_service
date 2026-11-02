@@ -150,11 +150,18 @@ jobs:
           format: json
           output: trivy-image.json
       - name: Report image vulnerabilities as annotations
-        if: failure() && hashFiles('trivy-image.json') != ''
+        if: failure()
         run: |
-          jq -r '.Results[]? | .Target as $t | .Vulnerabilities[]?
+          if [ ! -s trivy-image.json ]; then
+            echo "::error title=Trivy image::no report written; the scanner itself failed (see the step log)"
+            exit 0
+          fi
+          found=$(jq -r '.Results[]? | .Target as $t | .Vulnerabilities[]?
             | "::error title=Trivy \(.Severity) \(.VulnerabilityID)::\(.PkgName) \(.InstalledVersion) -> \(.FixedVersion) (\($t))"' \
-            trivy-image.json | sort -u
+            trivy-image.json | sort -u)
+          if [ -n "$found" ]; then echo "$found"; else
+            echo "::error title=Trivy image::report has no vulnerabilities; the scanner failed for another reason (see the step log)"
+          fi
       - if: github.event_name == 'push' && github.ref == 'refs/heads/main'
         uses: docker/login-action@74a5d142397b4f367a81961eba4e8cd7edddf772 # v3.4.0
         with:
