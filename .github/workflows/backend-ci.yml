@@ -149,11 +149,19 @@ jobs:
           exit-code: "1"
           format: json
           output: trivy-image.json
+        env:
+          # ghcr.io rate-limits anonymous DB pulls; fall back to the public ECR mirrors
+          TRIVY_DB_REPOSITORY: mirror.gcr.io/aquasec/trivy-db:2,public.ecr.aws/aquasecurity/trivy-db:2,ghcr.io/aquasecurity/trivy-db:2
+          TRIVY_JAVA_DB_REPOSITORY: mirror.gcr.io/aquasec/trivy-java-db:1,public.ecr.aws/aquasecurity/trivy-java-db:1,ghcr.io/aquasecurity/trivy-java-db:1
       - name: Report image vulnerabilities as annotations
         if: failure()
+        env:
+          IMAGE: ${{ steps.name.outputs.image }}:${{ github.sha }}
         run: |
           if [ ! -s trivy-image.json ]; then
-            echo "::error title=Trivy image::no report written; the scanner itself failed (see the step log)"
+            # Re-run to capture the scanner error (logs need sign-in, annotations do not)
+            trivy image --quiet --severity HIGH,CRITICAL --ignore-unfixed "$IMAGE" 2>&1 >/dev/null \
+              | grep -iE 'fatal|error' | tail -3 | sed 's/^/::error title=Trivy image scanner::/' || true
             exit 0
           fi
           found=$(jq -r '.Results[]? | .Target as $t | .Vulnerabilities[]?
