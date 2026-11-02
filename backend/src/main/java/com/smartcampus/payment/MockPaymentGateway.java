@@ -5,6 +5,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
+import org.springframework.context.annotation.Primary;
 import org.springframework.stereotype.Component;
 
 import java.math.BigDecimal;
@@ -38,6 +39,7 @@ import java.util.concurrent.TimeUnit;
  */
 @Component
 @ConditionalOnProperty(name = "app.payment.mock.magic-amounts", havingValue = "true")
+@Primary // only one gateway bean exists at runtime (the conditions are exclusive); this makes that explicit
 @Slf4j
 public class MockPaymentGateway implements PaymentGateway {
 

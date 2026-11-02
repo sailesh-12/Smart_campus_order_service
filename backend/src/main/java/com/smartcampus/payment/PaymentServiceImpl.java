@@ -92,7 +92,7 @@ public class PaymentServiceImpl implements PaymentService {
 
     @Override
     public PaymentOutcome processCharge(long paymentId) {
-        Payment payment = getPaymentEntity(paymentId);
+        Payment payment = loadPayment(paymentId);
         if (payment.getStatus() != PaymentStatus.INITIATED) {
             // Already charged (or in flight): never charge twice (rule 5.3 / 5.7)
             return currentOutcome(payment.getStatus());
@@ -145,7 +145,7 @@ public class PaymentServiceImpl implements PaymentService {
 
     @Override
     public boolean refund(long paymentId, RefundReason reason) {
-        Payment payment = getPaymentEntity(paymentId);
+        Payment payment = loadPayment(paymentId);
         if (payment.getStatus() == PaymentStatus.REFUNDED) {
             return true;
         }
@@ -164,18 +164,18 @@ public class PaymentServiceImpl implements PaymentService {
 
     @Override
     public PaymentResponse adminRetryRefund(long paymentId, long adminUserId) {
-        Payment payment = getPaymentEntity(paymentId);
+        Payment payment = loadPayment(paymentId);
         if (payment.getStatus() != PaymentStatus.REFUND_FAILED) {
             throw new ConflictException("REFUND_NOT_ALLOWED", "Only REFUND_FAILED payments can be retried");
         }
         // Admin attempts do not count against the automatic retry cap
         attemptRefund(payment, payment.getRefundReason(), 0, adminUserId, "RETRY_REFUND", null, null);
-        return getPayment(paymentId);
+        return toResponse(loadPayment(paymentId));
     }
 
     @Override
     public PaymentResponse adminResolve(long paymentId, String note, long adminUserId) {
-        Payment payment = getPaymentEntity(paymentId);
+        Payment payment = loadPayment(paymentId);
         if (payment.getResolvedAt() != null) {
             throw new ConflictException("INVALID_TRANSITION", "This payment issue is already resolved");
         }
@@ -195,7 +195,7 @@ public class PaymentServiceImpl implements PaymentService {
             }
             auditService.recordAction(adminUserId, "RESOLVE_PAYMENT", "PAYMENT", paymentId, note);
         });
-        return getPayment(paymentId);
+        return toResponse(loadPayment(paymentId));
     }
 
     @Override
@@ -204,7 +204,7 @@ public class PaymentServiceImpl implements PaymentService {
             throw ApiException.badRequest("VALIDATION_ERROR", "reason",
                     "Manual refunds use reason COMPLAINT or UNCOLLECTED_OVERRIDE");
         }
-        Payment payment = getPaymentEntity(paymentId);
+        Payment payment = loadPayment(paymentId);
         if (payment.getStatus() == PaymentStatus.REFUNDED) {
             return toResponse(payment); // rule 5.12: no-op, return current state
         }
@@ -218,7 +218,7 @@ public class PaymentServiceImpl implements PaymentService {
         }
         attemptRefund(payment, request.reason(), 1, adminUserId, "MANUAL_REFUND", request.note(), policy == null ? null
                 : () -> policy.afterRefund(paymentId, payment.getOrderId(), request.complaintId()));
-        return getPayment(paymentId);
+        return toResponse(loadPayment(paymentId));
     }
 
     /**
@@ -268,6 +268,14 @@ public class PaymentServiceImpl implements PaymentService {
     @Override
     @Transactional(readOnly = true)
     public Payment getPaymentEntity(long paymentId) {
+        return loadPayment(paymentId);
+    }
+
+    /**
+     * Internal lookup. Methods of this class call this instead of the public @Transactional getters, because
+     * a self-invocation bypasses the Spring proxy and its transaction settings would silently not apply.
+     */
+    private Payment loadPayment(long paymentId) {
         return paymentRepository.findById(paymentId)
                 .orElseThrow(() -> new NotFoundException("Payment not found with id: " + paymentId));
     }
@@ -288,7 +296,7 @@ public class PaymentServiceImpl implements PaymentService {
     @Override
     @Transactional(readOnly = true)
     public PaymentResponse getPayment(long paymentId) {
-        return toResponse(getPaymentEntity(paymentId));
+        return toResponse(loadPayment(paymentId));
     }
 
     @Override
