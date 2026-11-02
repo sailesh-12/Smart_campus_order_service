@@ -3,6 +3,7 @@ package com.smartcampus.payment;
 import com.smartcampus.common.security.CurrentUser;
 import com.smartcampus.payment.dto.ManualRefundRequest;
 import com.smartcampus.payment.dto.PaymentIssueResponse;
+import com.smartcampus.payment.dto.PaymentResponse;
 import com.smartcampus.payment.dto.ResolvePaymentRequest;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
@@ -22,6 +23,7 @@ import java.util.List;
  * Business Rule (5.12):
  * - All routes require ADMIN role.
  * - Writes an admin_actions audit record for every action through AuditService.
+ * - Every action returns the payment's state afterwards, so a failed gateway refund is visible (REFUND_FAILED).
  */
 @RestController
 @RequestMapping("/admin/payments")
@@ -34,25 +36,25 @@ public class PaymentAdminController {
 
     @GetMapping("/issues")
     public ResponseEntity<List<PaymentIssueResponse>> getIssues() {
-        throw new UnsupportedOperationException("TODO");
+        return ResponseEntity.ok(paymentService.getUnresolvedIssues());
     }
 
     @PostMapping("/{id}/retry-refund")
-    public ResponseEntity<Void> retryRefund(@PathVariable long id) {
-        throw new UnsupportedOperationException("TODO");
+    public ResponseEntity<PaymentResponse> retryRefund(@PathVariable long id) {
+        return ResponseEntity.ok(paymentService.adminRetryRefund(id, currentUser.id()));
     }
 
     @PostMapping("/{id}/resolve")
-    public ResponseEntity<Void> resolveIssue(
+    public ResponseEntity<PaymentResponse> resolveIssue(
             @PathVariable long id,
             @Valid @RequestBody ResolvePaymentRequest request) {
-        throw new UnsupportedOperationException("TODO");
+        return ResponseEntity.ok(paymentService.adminResolve(id, request.note(), currentUser.id()));
     }
 
     @PostMapping("/{id}/refund")
-    public ResponseEntity<Void> manualRefund(
+    public ResponseEntity<PaymentResponse> manualRefund(
             @PathVariable long id,
             @Valid @RequestBody ManualRefundRequest request) {
-        throw new UnsupportedOperationException("TODO");
+        return ResponseEntity.ok(paymentService.adminManualRefund(id, request, currentUser.id()));
     }
 }

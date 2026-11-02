@@ -24,18 +24,18 @@ public class VendorController {
 
     @GetMapping("/vendors")
     public ResponseEntity<List<VendorResponse>> getAllVendors() {
-        throw new UnsupportedOperationException("TODO");
+        return ResponseEntity.ok(vendorService.getAllVendors());
     }
 
     @GetMapping("/vendors/{id}")
     public ResponseEntity<VendorResponse> getVendorById(@PathVariable long id) {
-        throw new UnsupportedOperationException("TODO");
+        return ResponseEntity.ok(vendorService.getVendor(id));
     }
 
     @GetMapping("/vendor/me")
     @PreAuthorize("hasRole('VENDOR')")
     public ResponseEntity<VendorResponse> getMyVendor() {
-        throw new UnsupportedOperationException("TODO");
+        return ResponseEntity.ok(vendorService.getVendor(vendorService.vendorIdOf(currentUser.id())));
     }
 
     @PatchMapping("/vendors/{id}")
@@ -43,6 +43,7 @@ public class VendorController {
     public ResponseEntity<VendorResponse> updateVendor(
             @PathVariable long id,
             @Valid @RequestBody UpdateVendorRequest request) {
-        throw new UnsupportedOperationException("TODO");
+        boolean isAdmin = "ADMIN".equals(currentUser.role());
+        return ResponseEntity.ok(vendorService.updateVendor(id, request, currentUser.id(), isAdmin));
     }
 }

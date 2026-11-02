@@ -1,5 +1,6 @@
 package com.smartcampus.vendor;
 
+import com.smartcampus.common.security.CurrentUser;
 import com.smartcampus.vendor.dto.AdminResetPasswordRequest;
 import com.smartcampus.vendor.dto.CreateVendorRequest;
 import com.smartcampus.vendor.dto.UpdateVendorRequest;
@@ -26,28 +27,30 @@ import java.util.List;
 public class VendorAdminController {
 
     private final VendorService vendorService;
+    private final CurrentUser currentUser;
 
     @PostMapping
     public ResponseEntity<VendorResponse> createVendor(@Valid @RequestBody CreateVendorRequest request) {
-        throw new UnsupportedOperationException("TODO");
+        return ResponseEntity.status(HttpStatus.CREATED).body(vendorService.createVendor(request, currentUser.id()));
     }
 
     @GetMapping
     public ResponseEntity<List<VendorResponse>> getAllVendorsAdmin() {
-        throw new UnsupportedOperationException("TODO");
+        return ResponseEntity.ok(vendorService.getAllVendorsAdmin());
     }
 
     @PatchMapping("/{id}")
     public ResponseEntity<VendorResponse> updateVendorAdmin(
             @PathVariable long id,
             @Valid @RequestBody UpdateVendorRequest request) {
-        throw new UnsupportedOperationException("TODO");
+        return ResponseEntity.ok(vendorService.updateVendor(id, request, currentUser.id(), true));
     }
 
     @PostMapping("/{id}/reset-password")
     public ResponseEntity<Void> resetVendorPassword(
             @PathVariable long id,
             @Valid @RequestBody AdminResetPasswordRequest request) {
-        throw new UnsupportedOperationException("TODO");
+        vendorService.resetVendorPassword(id, request, currentUser.id());
+        return ResponseEntity.ok().build();
     }
 }

@@ -1,104 +1,227 @@
+# Backend: test -> analyse -> build, scan, push image (main) -> deploy to dev via GitOps (main).
 name: Backend CI/CD
 
 on:
   pull_request:
-    paths:
-      - "backend/**"
+    paths: ["backend/**", ".github/workflows/backend-ci.yml"]
   push:
     branches: [main]
-    paths:
-      - "backend/**"
+    # infra/** is not listed, so the deploy-dev commit below never retriggers this workflow
+    paths: ["backend/**", ".github/workflows/backend-ci.yml"]
+
+concurrency:
+  group: backend-ci-${{ github.ref }}
+  cancel-in-progress: true
 
 permissions:
   contents: read
 
+defaults:
+  run:
+    working-directory: backend
+
 jobs:
-  test:
-    runs-on: ubuntu-latest
-    services:
-      postgres:
-        image: postgres:16
-        env:
-          POSTGRES_DB: smartcampus
-          POSTGRES_USER: campus
-          POSTGRES_PASSWORD: campus
-        ports: ["5432:5432"]
-        options: >-
-          --health-cmd "pg_isready -U campus -d smartcampus"
-          --health-interval 10s --health-timeout 5s --health-retries 5
-      redis:
-        image: redis:7
-        ports: ["6379:6379"]
-        options: >-
-          --health-cmd "redis-cli ping"
-          --health-interval 10s --health-timeout 5s --health-retries 5
-    defaults:
-      run:
-        working-directory: backend
-    env:
-      SPRING_PROFILES_ACTIVE: test
-      DB_URL: jdbc:postgresql://localhost:5432/smartcampus
-      DB_USERNAME: campus
-      DB_PASSWORD: campus
-      REDIS_HOST: localhost
-      REDIS_PORT: 6379
-      JWT_SECRET: test-only-secret-key-that-is-at-least-32-chars
+  unit-tests:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
     steps:
-      - uses: actions/checkout@v4.2.2
-      - uses: actions/setup-java@v4.7.1
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+      - uses: actions/setup-java@c5195efecf7bdfc987ee8bae7a71cb8b11521c00 # v4.7.1
         with:
           distribution: temurin
           java-version: "21"
           cache: maven
-      - run: ./mvnw --batch-mode verify
+      - name: Unit tests (Surefire, *Test) + JaCoCo
+        run: ./mvnw -B test
+      - if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: unit-test-reports
+          path: |
+            backend/target/surefire-reports/
+            backend/target/site/jacoco/
+          if-no-files-found: warn
 
-  secrets:
-    runs-on: ubuntu-latest
+  integration-tests:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    services:
+      redis:
+        image: redis:7.4.6-alpine
+        ports: ["6379:6379"]
+        options: >-
+          --health-cmd "redis-cli ping" --health-interval 5s --health-timeout 3s --health-retries 10
+    env:
+      REDIS_HOST: localhost
+      REDIS_PORT: "6379"
     steps:
-      - uses: actions/checkout@v4.2.2
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+      - uses: actions/setup-java@c5195efecf7bdfc987ee8bae7a71cb8b11521c00 # v4.7.1
         with:
-          fetch-depth: 0
-      - uses: zricethezav/gitleaks-action@v2.3.9
+          distribution: temurin
+          java-version: "21"
+          cache: maven
+      # Postgres and RabbitMQ come from Testcontainers; unit tests are skipped here (they ran in the job above)
+      - name: Integration tests (Failsafe, integration/*IT) + JaCoCo
+        run: ./mvnw -B verify -Dtest=SkipUnitTests -Dsurefire.failIfNoSpecifiedTests=false
+      - if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
-          args: --gitleaks-ignore-path=.gitleaksignore
+          name: integration-test-reports
+          path: |
+            backend/target/failsafe-reports/
+            backend/target/site/jacoco-it/
+          if-no-files-found: warn
+
+  sonarqube:
+    needs: [unit-tests, integration-tests]
+    # Secrets are not available to pull requests from forks
+    if: github.event_name == 'push' || github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          fetch-depth: 0 # full history for blame and new-code detection
+      - uses: actions/setup-java@c5195efecf7bdfc987ee8bae7a71cb8b11521c00 # v4.7.1
+        with:
+          distribution: temurin
+          java-version: "21"
+          cache: maven
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          pattern: "*-test-reports"
+          merge-multiple: true
+          path: backend/target
+      - name: Scan and wait for the quality gate
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+          # The URL is not sensitive: a repository variable (a secret with the same name also works)
+          SONAR_HOST_URL: ${{ vars.SONAR_HOST_URL || secrets.SONAR_HOST_URL }}
+        run: |
+          if [ -z "$SONAR_TOKEN" ]; then
+            echo "::error::Repository secret SONAR_TOKEN is missing (Settings > Secrets and variables > Actions > Secrets)"
+            exit 1
+          fi
+          if [ -z "$SONAR_HOST_URL" ]; then
+            echo "::error::Repository variable SONAR_HOST_URL is missing (e.g. https://sonarcloud.io)"
+            exit 1
+          fi
+          ./mvnw -B -DskipTests test-compile sonar:sonar \
+            -Dsonar.host.url="$SONAR_HOST_URL" \
+            -Dsonar.qualitygate.wait=true -Dsonar.qualitygate.timeout=300
 
   image:
-    needs: [test, secrets]
-    runs-on: ubuntu-latest
+    needs: [unit-tests, integration-tests, sonarqube]
+    # Runs when tests passed and Sonar passed (or was skipped for a fork PR)
+    if: >-
+      !cancelled() && needs.unit-tests.result == 'success' && needs.integration-tests.result == 'success'
+      && (needs.sonarqube.result == 'success' || needs.sonarqube.result == 'skipped')
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
     permissions:
       contents: read
       packages: write
+    outputs:
+      image: ${{ steps.name.outputs.image }}
     steps:
-      - uses: actions/checkout@v4.2.2
-      - uses: docker/build-push-action@v6.18.0
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+      - id: name
+        name: Image name (registry paths must be lowercase)
+        run: echo "image=ghcr.io/${GITHUB_REPOSITORY,,}/backend" >> "$GITHUB_OUTPUT"
+      - uses: docker/setup-buildx-action@e468171a9de216ec08956ac3ada2f0791b6bd435 # v3.11.1
+      - name: Build
+        uses: docker/build-push-action@263435318d21b8e681c14492fe198d362a7d2c83 # v6.18.0
         with:
           context: backend
           file: backend/Dockerfile
           load: true
-          tags: backend:${{ github.sha }}
-      - uses: aquasecurity/trivy-action@v0.36.0
-        with:
-          image-ref: backend:${{ github.sha }}
-          vuln-type: os,library
-          severity: HIGH,CRITICAL
-          ignore-unfixed: true
-          exit-code: "1"
-      - if: github.ref == 'refs/heads/main'
-        uses: docker/login-action@v3.4.0
+          tags: ${{ steps.name.outputs.image }}:${{ github.sha }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+      - name: Install Trivy (pinned, checksum verified)
+        env:
+          TRIVY_VERSION: 0.70.0
+          TRIVY_SHA256: 8b4376d5d6befe5c24d503f10ff136d9e0c49f9127a4279fd110b727929a5aa9
+        run: |
+          file="trivy_${TRIVY_VERSION}_Linux-64bit.tar.gz"
+          curl -sSfLO "https://github.com/aquasecurity/trivy/releases/download/v${TRIVY_VERSION}/$file"
+          echo "${TRIVY_SHA256}  $file" | sha256sum -c -
+          tar -xzf "$file" trivy
+      - name: Trivy image scan (fail on fixed HIGH/CRITICAL)
+        env:
+          IMAGE: ${{ steps.name.outputs.image }}:${{ github.sha }}
+          TRIVY_SKIP_VERSION_CHECK: "true"
+          # ghcr.io rate-limits anonymous DB pulls; try the public mirrors first
+          TRIVY_DB_REPOSITORY: mirror.gcr.io/aquasec/trivy-db:2,public.ecr.aws/aquasecurity/trivy-db:2,ghcr.io/aquasecurity/trivy-db:2
+          TRIVY_JAVA_DB_REPOSITORY: mirror.gcr.io/aquasec/trivy-java-db:1,public.ecr.aws/aquasecurity/trivy-java-db:1,ghcr.io/aquasecurity/trivy-java-db:1
+        run: |
+          # Findings and scanner errors are also emitted as annotations (visible on the PR without opening logs)
+          if ! ./trivy image --pkg-types os,library --severity HIGH,CRITICAL --ignore-unfixed \
+                 --format json --output trivy-image.json "$IMAGE" 2> trivy-image.err; then
+            cat trivy-image.err
+            tail -5 trivy-image.err | sed 's/^/::error title=Trivy image scanner::/'
+            exit 1
+          fi
+          ./trivy convert --format table trivy-image.json
+          found=$(jq -r '.Results[]? | .Target as $t | .Vulnerabilities[]?
+            | "::error title=Trivy \(.Severity) \(.VulnerabilityID)::\(.PkgName) \(.InstalledVersion) -> \(.FixedVersion) (\($t))"' \
+            trivy-image.json | sort -u)
+          if [ -n "$found" ]; then echo "$found"; exit 1; fi
+      - if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        uses: docker/login-action@74a5d142397b4f367a81961eba4e8cd7edddf772 # v3.4.0
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
-      - if: github.ref == 'refs/heads/main'
-        name: Push image
-        shell: bash
-        env:
-          IMAGE: ghcr.io/${{ github.repository_owner }}/${{ github.event.repository.name }}/backend:${{ github.sha }}
-        run: |
-          image="$(echo "$IMAGE" | tr '[:upper:]' '[:lower:]')"
-          docker tag "backend:${GITHUB_SHA}" "$image"
-          docker push "$image"
+      - if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        name: Push (tag = commit SHA, never latest)
+        run: docker push "${{ steps.name.outputs.image }}:${GITHUB_SHA}"
 
-  # TODO: Add deployment when infra/ contains Helm values for the dev environment.
+  deploy-dev:
+    needs: image
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    environment: dev
+    permissions:
+      contents: write
+    concurrency:
+      group: gitops-dev
+      cancel-in-progress: false
+    defaults:
+      run:
+        working-directory: .
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          # GITOPS_TOKEN (GitHub App or fine-grained PAT) is needed when main is protected; see docs/ci-cd.md
+          token: ${{ secrets.GITOPS_TOKEN || github.token }}
+      - name: Set image.tag in values-dev.yaml
+        run: infra/scripts/set-image-tag.sh infra/helm/values-dev.yaml "$GITHUB_SHA"
+      - name: Commit and push
+        run: |
+          git config user.name "smartcampus-gitops[bot]"
+          git config user.email "gitops-bot@users.noreply.github.com"
+          git add infra/helm/values-dev.yaml
+          git diff --cached --quiet && { echo "Tag already deployed"; exit 0; }
+          git commit -m "chore(dev): deploy backend ${GITHUB_SHA::12}"
+          for attempt in 1 2 3; do git pull --rebase origin main && git push origin HEAD:main && exit 0; sleep 5; done
+          exit 1
+      - name: Smoke test (needs DEV_BASE_URL)
+        env:
+          DEV_BASE_URL: ${{ vars.DEV_BASE_URL }}
+        run: |
+          if [ -z "$DEV_BASE_URL" ]; then
+            echo "::notice::DEV_BASE_URL is not set; skipping the smoke test (a local cluster is not reachable from GitHub runners)"
+            exit 0
+          fi
+          # Give Argo CD time to sync and the rollout to finish
+          for i in $(seq 1 40); do
+            if curl -fsS --max-time 5 "$DEV_BASE_URL/actuator/health/readiness" | grep -q '"UP"'; then
+              echo "Dev is ready"; exit 0
+            fi
+            sleep 15
+          done
+          echo "::error::$DEV_BASE_URL/actuator/health/readiness did not report UP within 10 minutes"
+          exit 1

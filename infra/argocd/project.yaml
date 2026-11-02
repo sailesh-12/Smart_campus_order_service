@@ -1,0 +1,37 @@
+apiVersion: argoproj.io/v1alpha1
+kind: AppProject
+metadata:
+  name: smartcampus
+  namespace: argocd
+spec:
+  description: Smart Campus backend (dev, staging, prod)
+  # Only this repository may be deployed by this project
+  sourceRepos:
+    - https://github.com/sailesh-12/Smart_campus_order_service.git
+  # ...and only into these namespaces of the local cluster
+  destinations:
+    - server: https://kubernetes.default.svc
+      namespace: smartcampus-dev
+    - server: https://kubernetes.default.svc
+      namespace: smartcampus-staging
+    - server: https://kubernetes.default.svc
+      namespace: smartcampus-prod
+  # CreateNamespace=true needs permission to create the Namespace objects themselves
+  clusterResourceWhitelist:
+    - group: ""
+      kind: Namespace
+  namespaceResourceWhitelist:
+    - group: ""
+      kind: ConfigMap
+    - group: ""
+      kind: Service
+    - group: ""
+      kind: ServiceAccount
+    - group: apps
+      kind: Deployment
+    - group: networking.k8s.io
+      kind: Ingress
+    - group: autoscaling
+      kind: HorizontalPodAutoscaler
+    - group: policy
+      kind: PodDisruptionBudget

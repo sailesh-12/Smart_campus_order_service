@@ -1,0 +1,6 @@
+apiVersion: v2
+name: backend
+description: Smart Campus backend (Spring Boot). Data services are external managed services, not deployed here.
+type: application
+version: 0.1.0
+appVersion: "0.0.1"

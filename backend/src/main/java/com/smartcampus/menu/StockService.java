@@ -1,6 +1,5 @@
 package com.smartcampus.menu;
 
-import com.smartcampus.common.exception.NotFoundException;
 import com.smartcampus.menu.events.MenuItemUpdated;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -53,6 +52,7 @@ public class StockService {
 
     /**
      * Restores stock to the menu item and publishes MenuItemUpdated event.
+     * Callers must only invoke this after winning the order's conditional status update (rule 5.2).
      *
      * @param itemId menu item id
      * @param qty quantity to restore
@@ -67,13 +67,24 @@ public class StockService {
 
     /**
      * Publishes a MenuItemUpdated event with availability and lowStock flags.
+     * The event is delivered to SSE clients after the surrounding transaction commits.
      */
     public void publishUpdatedState(long itemId) {
         menuItemRepository.findById(itemId).ifPresent(item -> {
-            boolean available = item.isAvailable() && item.getStockQty() > 0;
-            boolean lowStock = item.getStockQty() > 0 && item.getStockQty() <= lowStockThreshold;
-            eventPublisher.publishEvent(new MenuItemUpdated(item.getVendorId(), item.getId(), available, lowStock));
+            // The entity may be stale after the bulk update, so read the stock column directly
+            Integer stock = menuItemRepository.currentStock(itemId);
+            int stockQty = stock != null ? stock : item.getStockQty();
+            publish(item.getVendorId(), item.getId(), item.isAvailable(), stockQty);
         });
+    }
+
+    public void publish(long vendorId, long itemId, boolean isAvailable, int stockQty) {
+        eventPublisher.publishEvent(new MenuItemUpdated(vendorId, itemId,
+                isAvailable(isAvailable, stockQty), isLowStock(stockQty)));
+    }
+
+    public boolean isAvailable(boolean isAvailableFlag, int stockQty) {
+        return isAvailableFlag && stockQty > 0;
     }
 
     public boolean isLowStock(int stockQty) {

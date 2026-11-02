@@ -26,7 +26,7 @@ import java.util.List;
 /**
  * Spring Security configuration:
  * - Stateless JWT authentication
- * - CORS support for localhost:3000 and Expo mobile developer origin
+ * - CORS support for localhost:3000 (vendor dashboard), localhost:3001 (admin dashboard) and Expo dev origins
  * - Public routes defined per Section 7 specification
  * - Request-scoped CurrentUser bean for dependency injection into controllers
  */
@@ -73,6 +73,13 @@ public class SecurityConfig {
                         // All other endpoints require authentication
                         .anyRequest().authenticated()
                 )
+                // Section 9: no (valid) token is 401, a valid token with the wrong role is 403
+                .exceptionHandling(ex -> ex.authenticationEntryPoint((request, response, authException) -> {
+                    response.setStatus(401);
+                    response.setContentType("application/json");
+                    response.getWriter().write("{\"timestamp\":\"" + java.time.Instant.now()
+                            + "\",\"status\":401,\"code\":\"UNAUTHORIZED\",\"message\":\"Authentication required\",\"fieldErrors\":null}");
+                }))
                 .addFilterBefore(jwtAuthFilter, UsernamePasswordAuthenticationFilter.class);
 
         return http.build();
@@ -84,6 +91,8 @@ public class SecurityConfig {
         config.setAllowedOriginPatterns(List.of(
                 "http://localhost:3000",
                 "http://127.0.0.1:3000",
+                "http://localhost:3001",
+                "http://127.0.0.1:3001",
                 "http://localhost:8081",
                 "http://localhost:19000",
                 "http://localhost:19006",

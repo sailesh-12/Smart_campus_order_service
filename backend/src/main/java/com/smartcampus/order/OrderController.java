@@ -5,7 +5,9 @@ import com.smartcampus.order.dto.CreateOrderRequest;
 import com.smartcampus.order.dto.OrderResponse;
 import com.smartcampus.order.dto.PayOrderResponse;
 import com.smartcampus.order.dto.PickupCredentialsResponse;
+import com.smartcampus.order.dto.PlaceOrderResult;
 import com.smartcampus.order.dto.SlotResponse;
+import com.smartcampus.payment.PaymentStatus;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.format.annotation.DateTimeFormat;
@@ -27,47 +29,53 @@ import java.util.List;
 @RequiredArgsConstructor
 public class OrderController {
 
+    static final String REPLAYED_HEADER = "Idempotent-Replayed";
+
     private final OrderService orderService;
     private final PickupService pickupService;
     private final SlotService slotService;
     private final CurrentUser currentUser;
 
+    /** 201 for a new order; 200 + Idempotent-Replayed: true when the same key and cart were sent before. */
     @PostMapping("/orders")
     @PreAuthorize("hasRole('STUDENT')")
     public ResponseEntity<OrderResponse> placeOrder(
             @RequestHeader("Idempotency-Key") String idempotencyKey,
             @Valid @RequestBody CreateOrderRequest request) {
-        throw new UnsupportedOperationException("TODO");
+        return toResponse(orderService.placeOrder(request, currentUser.id(), idempotencyKey));
     }
 
+    /** 200 paid, 202 PAYMENT_UNCONFIRMED (still being confirmed), 402 PAYMENT_DECLINED (thrown). */
     @PostMapping("/orders/{id}/pay")
     @PreAuthorize("hasRole('STUDENT')")
     public ResponseEntity<PayOrderResponse> payOrder(@PathVariable long id) {
-        throw new UnsupportedOperationException("TODO");
+        PayOrderResponse result = orderService.payOrder(id, currentUser.id());
+        HttpStatus status = result.paymentStatus() == PaymentStatus.UNCONFIRMED ? HttpStatus.ACCEPTED : HttpStatus.OK;
+        return ResponseEntity.status(status).body(result);
     }
 
     @GetMapping("/orders/me")
     @PreAuthorize("hasRole('STUDENT')")
     public ResponseEntity<List<OrderResponse>> getMyOrders() {
-        throw new UnsupportedOperationException("TODO");
+        return ResponseEntity.ok(orderService.getStudentOrders(currentUser.id()));
     }
 
     @GetMapping("/orders/{id}")
     @PreAuthorize("hasAnyRole('STUDENT', 'VENDOR', 'ADMIN')")
     public ResponseEntity<OrderResponse> getOrderById(@PathVariable long id) {
-        throw new UnsupportedOperationException("TODO");
+        return ResponseEntity.ok(orderService.getOrderById(id, currentUser.id(), currentUser.role()));
     }
 
     @GetMapping("/orders/{id}/pickup")
     @PreAuthorize("hasRole('STUDENT')")
     public ResponseEntity<PickupCredentialsResponse> getPickupDetails(@PathVariable long id) {
-        throw new UnsupportedOperationException("TODO");
+        return ResponseEntity.ok(pickupService.getPickupDetails(id, currentUser.id()));
     }
 
     @PostMapping("/orders/{id}/cancel")
     @PreAuthorize("hasRole('STUDENT')")
-    public ResponseEntity<Void> cancelOrder(@PathVariable long id) {
-        throw new UnsupportedOperationException("TODO");
+    public ResponseEntity<OrderResponse> cancelOrder(@PathVariable long id) {
+        return ResponseEntity.ok(orderService.cancelOrder(id, currentUser.id()));
     }
 
     @PostMapping("/orders/{id}/reorder")
@@ -75,13 +83,20 @@ public class OrderController {
     public ResponseEntity<OrderResponse> reorder(
             @PathVariable long id,
             @RequestHeader("Idempotency-Key") String idempotencyKey) {
-        throw new UnsupportedOperationException("TODO");
+        return toResponse(orderService.reorder(id, currentUser.id(), idempotencyKey));
     }
 
     @GetMapping("/vendors/{id}/slots")
     public ResponseEntity<List<SlotResponse>> getSlots(
             @PathVariable long id,
             @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate date) {
-        throw new UnsupportedOperationException("TODO");
+        return ResponseEntity.ok(slotService.getSlotsForVendor(id, date));
+    }
+
+    private static ResponseEntity<OrderResponse> toResponse(PlaceOrderResult result) {
+        if (result.replayed()) {
+            return ResponseEntity.ok().header(REPLAYED_HEADER, "true").body(result.order());
+        }
+        return ResponseEntity.status(HttpStatus.CREATED).body(result.order());
     }
 }

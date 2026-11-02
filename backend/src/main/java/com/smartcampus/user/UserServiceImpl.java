@@ -86,4 +86,10 @@ public class UserServiceImpl implements UserService {
         user.setActive(active);
         userRepository.save(user);
     }
+
+    @Override
+    @Transactional(readOnly = true)
+    public long countActiveByRole(Role role) {
+        return userRepository.countByRoleAndIsActiveTrue(role);
+    }
 }

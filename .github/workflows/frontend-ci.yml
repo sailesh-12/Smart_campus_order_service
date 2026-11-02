@@ -1,0 +1,63 @@
+# Frontends: lint, typecheck, test (and build the web apps), only for the apps that changed.
+name: Frontend CI
+
+on:
+  pull_request:
+    paths: ["mobile/**", "vendor-web/**", "admin-web/**", ".github/workflows/frontend-ci.yml"]
+  push:
+    branches: [main]
+    paths: ["mobile/**", "vendor-web/**", "admin-web/**", ".github/workflows/frontend-ci.yml"]
+
+concurrency:
+  group: frontend-ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  changes:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      pull-requests: read
+    outputs:
+      apps: ${{ steps.filter.outputs.changes }}
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+      - id: filter
+        uses: dorny/paths-filter@de90cc6fb38fc0963ad72b210f1f284cd68cea36 # v3.0.2
+        with:
+          # A change to this workflow re-checks every app
+          filters: |
+            mobile: ["mobile/**", ".github/workflows/frontend-ci.yml"]
+            vendor-web: ["vendor-web/**", ".github/workflows/frontend-ci.yml"]
+            admin-web: ["admin-web/**", ".github/workflows/frontend-ci.yml"]
+
+  check:
+    needs: changes
+    if: needs.changes.outputs.apps != '[]'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        app: ${{ fromJSON(needs.changes.outputs.apps) }}
+    defaults:
+      run:
+        working-directory: ${{ matrix.app }}
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: "24.14.1"
+          cache: npm
+          cache-dependency-path: ${{ matrix.app }}/package-lock.json
+      - run: npm ci
+      - run: npm run lint
+      - run: npm run typecheck
+      - run: npm test
+      - name: Production build
+        if: matrix.app != 'mobile'
+        run: npm run build

@@ -1,8 +1,10 @@
 package com.smartcampus.notify;
 
 import java.io.IOException;
+import java.util.Collections;
 import java.util.List;
 import java.util.Map;
+import java.util.WeakHashMap;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CopyOnWriteArrayList;
 
@@ -24,6 +26,9 @@ public class SseEmitterRegistry {
     private final Map<Long, List<SseEmitter>> orderStreams = new ConcurrentHashMap<>();
     private final Map<Long, List<SseEmitter>> vendorStreams = new ConcurrentHashMap<>();
     private final Map<Long, List<SseEmitter>> menuStreams = new ConcurrentHashMap<>();
+
+    // One lock object per emitter (weak keys, so closed emitters are dropped without explicit cleanup)
+    private final Map<SseEmitter, Object> sendLocks = Collections.synchronizedMap(new WeakHashMap<>());
 
     public SseEmitter subscribeToOrder(long orderId) {
         return register(orderStreams, orderId);
@@ -57,12 +62,26 @@ public class SseEmitterRegistry {
     /** Send one event to one connection. Also used for the initial snapshot. */
     public void sendTo(SseEmitter emitter, String event, Object data) {
         try {
-            // An emitter is not thread-safe: heartbeat and events may collide, so lock it
-            synchronized (emitter) {
+            // An emitter is not thread-safe: heartbeat and events may collide, so serialize sends per emitter
+            synchronized (lockFor(emitter)) {
                 emitter.send(SseEmitter.event().name(event).data(data, MediaType.APPLICATION_JSON));
             }
         } catch (IOException | IllegalStateException e) {
             emitter.completeWithError(e); // client is gone; triggers cleanup below
+        }
+    }
+
+    /**
+     * Sends a comment line right after subscribing. Until the first byte is written the response headers are not
+     * sent, and clients (fetch-based SSE) only see the stream as open after the next heartbeat, up to 25 s later.
+     */
+    public void sendHello(SseEmitter emitter) {
+        try {
+            synchronized (lockFor(emitter)) {
+                emitter.send(SseEmitter.event().comment("connected"));
+            }
+        } catch (IOException | IllegalStateException e) {
+            emitter.completeWithError(e);
         }
     }
 
@@ -73,7 +92,7 @@ public class SseEmitterRegistry {
             for (List<SseEmitter> emitters : streams.values()) {
                 for (SseEmitter emitter : emitters) {
                     try {
-                        synchronized (emitter) {
+                        synchronized (lockFor(emitter)) {
                             emitter.send(SseEmitter.event().comment("keepalive"));
                         }
                     } catch (IOException | IllegalStateException e) {
@@ -82,6 +101,10 @@ public class SseEmitterRegistry {
                 }
             }
         }
+    }
+
+    private Object lockFor(SseEmitter emitter) {
+        return sendLocks.computeIfAbsent(emitter, e -> new Object());
     }
 
     private SseEmitter register(Map<Long, List<SseEmitter>> streams, long key) {

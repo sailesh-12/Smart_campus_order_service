@@ -1,0 +1,27 @@
+# Staging (namespace smartcampus-staging). Argo CD syncs automatically. Promoted from dev by promote.yml.
+image:
+  # Managed by .github/workflows/promote.yml: only this line is edited.
+  tag: "0000000000000000000000000000000000000000"
+
+autoscaling:
+  enabled: true
+  minReplicas: 2
+  maxReplicas: 6
+  targetCPUUtilizationPercentage: 70
+
+config:
+  # No dev profile: no mock payment gateway and no seed data (Flyway runs db/migration only)
+  SPRING_PROFILES_ACTIVE: staging
+  # With more than one replica, each pod only holds its own SSE connections, so order events must be
+  # fanned out to every pod through RabbitMQ (exchange order.events). NOTE: the backend currently only
+  # declares the exchange/queue for this mode; the publisher/listener relay is not implemented yet
+  # (see docs/ci-cd.md, "Known gaps").
+  APP_EVENTS_TRANSPORT: rabbit
+  APP_TIME_ZONE: Asia/Kolkata
+  SPRING_LIFECYCLE_TIMEOUTPERSHUTDOWNPHASE: 30s
+
+ingress:
+  host: api.staging.smartcampus.example.com
+  tls:
+    - hosts: [api.staging.smartcampus.example.com]
+      secretName: smartcampus-staging-tls
