@@ -254,7 +254,7 @@ stateDiagram-v2
 **Response (`201 Created`):**
 ```json
 {
-  "token": "eyJhbGciOiJIUzI1NiIsIn...",
+  "token": "<JWT>",
   "tokenType": "Bearer",
   "expiresInSeconds": 3600,
   "user": {
@@ -282,7 +282,7 @@ stateDiagram-v2
 **Response (`200 OK`):**
 ```json
 {
-  "token": "eyJhbGciOiJIUzI1NiIsIn...",
+  "token": "<JWT>",
   "tokenType": "Bearer",
   "expiresInSeconds": 3600,
   "user": {
@@ -302,7 +302,7 @@ stateDiagram-v2
 **Request Body:**
 ```json
 {
-  "refreshToken": "eyJhbGciOiJIUzI1NiIsIn..."
+  "refreshToken": "<JWT>"
 }
 ```
 
