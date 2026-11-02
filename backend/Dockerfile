@@ -10,10 +10,14 @@ COPY src src
 RUN ./mvnw -B -q package -DskipTests \
  && java -Djarmode=tools -jar target/backend-*.jar extract --layers --launcher --destination target/extracted
 
-FROM eclipse-temurin:21.0.10_7-jre-noble
+FROM eclipse-temurin:21.0.13_9-jre-noble
 WORKDIR /app
-# Fixed numeric non-root user, so Kubernetes can enforce runAsNonRoot
-RUN groupadd --system --gid 10001 app \
+# Ubuntu security updates published after the base image was built (e.g. openssl), then a fixed numeric
+# non-root user, so Kubernetes can enforce runAsNonRoot
+RUN apt-get update \
+ && DEBIAN_FRONTEND=noninteractive apt-get upgrade -y --no-install-recommends \
+ && rm -rf /var/lib/apt/lists/* \
+ && groupadd --system --gid 10001 app \
  && useradd --system --uid 10001 --gid app --no-create-home --shell /usr/sbin/nologin app
 # Layered copy: dependencies change less often than application classes
 COPY --from=build --chown=10001:10001 /workspace/target/extracted/dependencies/ ./

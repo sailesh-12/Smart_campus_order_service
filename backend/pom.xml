@@ -45,7 +45,18 @@
 		<sonar.coverage.jacoco.xmlReportPaths>${project.build.directory}/site/jacoco/jacoco.xml,${project.build.directory}/site/jacoco-it/jacoco.xml</sonar.coverage.jacoco.xmlReportPaths>
 		<!-- Tests never read backend/.env (real credentials); see spring.config.import in application.properties -->
 		<test.env.file>${project.build.directory}/no-env-file-for-tests</test.env.file>
+		<!-- Transitive via firebase-admin; pinned above the version it brings for CVE-2026-102554 (Trivy image scan) -->
+		<guava.version>33.7.2-jre</guava.version>
 	</properties>
+	<dependencyManagement>
+		<dependencies>
+			<dependency>
+				<groupId>com.google.guava</groupId>
+				<artifactId>guava</artifactId>
+				<version>${guava.version}</version>
+			</dependency>
+		</dependencies>
+	</dependencyManagement>
 	<dependencies>
 		<dependency>
 			<groupId>org.springframework.boot</groupId>
