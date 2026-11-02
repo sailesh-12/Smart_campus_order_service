@@ -38,7 +38,9 @@
 		<!-- CI: coverage and static analysis -->
 		<jacoco.version>0.8.16</jacoco.version>
 		<sonar-maven-plugin.version>5.8.0.7211</sonar-maven-plugin.version>
-		<sonar.projectKey>smartcampus-backend</sonar.projectKey>
+		<!-- SonarCloud project imported from this GitHub repository -->
+		<sonar.organization>sailesh-12</sonar.organization>
+		<sonar.projectKey>sailesh-12_Smart_campus_order_service</sonar.projectKey>
 		<sonar.projectName>Smart Campus Backend</sonar.projectName>
 		<sonar.coverage.jacoco.xmlReportPaths>${project.build.directory}/site/jacoco/jacoco.xml,${project.build.directory}/site/jacoco-it/jacoco.xml</sonar.coverage.jacoco.xmlReportPaths>
 		<!-- Tests never read backend/.env (real credentials); see spring.config.import in application.properties -->

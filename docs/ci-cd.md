@@ -48,12 +48,12 @@ Repository → Settings → Secrets and variables → Actions:
 | Name | Kind | Used by | Value |
 |---|---|---|---|
 | `SONAR_TOKEN` | secret | backend-ci `sonarqube` | SonarQube/SonarCloud token with "Execute Analysis" |
-| `SONAR_HOST_URL` | secret | backend-ci `sonarqube` | e.g. `https://sonarcloud.io` or your server URL |
+| `SONAR_HOST_URL` | **variable** | backend-ci `sonarqube` | `https://sonarcloud.io` (not sensitive; a secret of the same name also works) |
 | `GITOPS_TOKEN` | secret | `deploy-dev`, `promote.yml` | GitHub App installation token or fine-grained PAT with **Contents: read and write** on this repo; needed only if `main` is protected (see below) |
 | `DEV_BASE_URL` | variable | `deploy-dev` smoke test | public URL of dev, e.g. `https://dev.smartcampus.example.com`; leave unset for a local cluster |
 
-With SonarCloud also set the organisation: add `-Dsonar.organization=<org>` to the scan command or the
-`sonar.organization` property in `backend/pom.xml`. The project key is `smartcampus-backend`.
+SonarCloud: organisation `sailesh-12`, project key `sailesh-12_Smart_campus_order_service` (set in `backend/pom.xml`).
+Turn **Automatic Analysis off** in the SonarCloud project (Administration → Analysis Method); CI analysis is rejected while it is on.
 
 `GITHUB_TOKEN` covers GHCR push (`packages: write`, image job only) and the promote existence check (`packages: read`).
 

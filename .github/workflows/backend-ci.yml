@@ -96,10 +96,15 @@ jobs:
       - name: Scan and wait for the quality gate
         env:
           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
-          SONAR_HOST_URL: ${{ secrets.SONAR_HOST_URL }}
+          # The URL is not sensitive: a repository variable (a secret with the same name also works)
+          SONAR_HOST_URL: ${{ vars.SONAR_HOST_URL || secrets.SONAR_HOST_URL }}
         run: |
-          if [ -z "$SONAR_TOKEN" ] || [ -z "$SONAR_HOST_URL" ]; then
-            echo "::error::SONAR_TOKEN and SONAR_HOST_URL repository secrets are required (see docs/ci-cd.md)"
+          if [ -z "$SONAR_TOKEN" ]; then
+            echo "::error::Repository secret SONAR_TOKEN is missing (Settings > Secrets and variables > Actions > Secrets)"
+            exit 1
+          fi
+          if [ -z "$SONAR_HOST_URL" ]; then
+            echo "::error::Repository variable SONAR_HOST_URL is missing (e.g. https://sonarcloud.io)"
             exit 1
           fi
           ./mvnw -B -DskipTests test-compile sonar:sonar \
