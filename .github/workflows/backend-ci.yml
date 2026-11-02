@@ -160,8 +160,10 @@ jobs:
         run: |
           if [ ! -s trivy-image.json ]; then
             # Re-run to capture the scanner error (logs need sign-in, annotations do not)
-            trivy image --quiet --severity HIGH,CRITICAL --ignore-unfixed "$IMAGE" 2>&1 >/dev/null \
-              | grep -iE 'fatal|error' | tail -3 | sed 's/^/::error title=Trivy image scanner::/' || true
+            bin=$(command -v trivy || find "$RUNNER_TOOL_CACHE" "$HOME" -type f -name trivy 2>/dev/null | head -1)
+            echo "::error title=Trivy image scanner::binary='${bin:-not found}'"
+            [ -n "$bin" ] && "$bin" image --severity HIGH,CRITICAL --ignore-unfixed "$IMAGE" 2>&1 >/dev/null \
+              | tail -6 | sed 's/^/::error title=Trivy image scanner::/' || true
             exit 0
           fi
           found=$(jq -r '.Results[]? | .Target as $t | .Vulnerabilities[]?
