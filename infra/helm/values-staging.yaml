@@ -1,7 +1,7 @@
 # Staging (namespace smartcampus-staging). Argo CD syncs automatically. Promoted from dev by promote.yml.
 image:
   # Managed by .github/workflows/promote.yml: only this line is edited.
-  tag: "0000000000000000000000000000000000000000"
+  tag: "63ce2882003e4b3967f8f6ea814e609bac649716"
 
 autoscaling:
   enabled: true
