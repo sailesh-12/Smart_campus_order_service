@@ -1,0 +1,46 @@
+# Local infrastructure for development: PostgreSQL, Redis and RabbitMQ.
+# The backend's defaults (application.properties) already point at these, so no backend/.env is needed:
+#   docker compose up -d     then run the backend with the dev profile.
+# Dev-only credentials; never use them anywhere else. Images are pinned to the versions CI tests against.
+name: smartcampus
+
+services:
+  postgres:
+    image: postgres:16.10-alpine
+    environment:
+      POSTGRES_DB: smartcampus
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d smartcampus"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  redis:
+    image: redis:7.4.6-alpine
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  rabbitmq:
+    image: rabbitmq:3.13.7-management-alpine
+    ports:
+      - "5672:5672"
+      - "15672:15672" # management UI, login guest / guest
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 20
+
+volumes:
+  postgres-data:
