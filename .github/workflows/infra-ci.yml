@@ -32,8 +32,11 @@ jobs:
         run: helm lint infra/helm/backend -f infra/helm/values-${{ matrix.env }}.yaml --strict
       - name: helm template
         run: |
+          # --api-versions: render the ServiceMonitor / PrometheusRule too (they need the operator's CRDs)
           helm template backend infra/helm/backend -f infra/helm/values-${{ matrix.env }}.yaml \
-            --namespace smartcampus-${{ matrix.env }} > rendered.yaml
+            --namespace smartcampus-${{ matrix.env }} \
+            --api-versions monitoring.coreos.com/v1/ServiceMonitor \
+            --api-versions monitoring.coreos.com/v1/PrometheusRule > rendered.yaml
           echo "Rendered $(grep -c '^kind:' rendered.yaml) objects:"
           grep '^kind:' rendered.yaml | sort | uniq -c
 

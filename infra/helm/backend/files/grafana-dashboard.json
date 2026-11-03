@@ -1,0 +1,131 @@
+{
+  "title": "Smart Campus backend",
+  "uid": "smartcampus-backend",
+  "tags": ["smartcampus", "spring-boot"],
+  "timezone": "browser",
+  "schemaVersion": 39,
+  "version": 1,
+  "refresh": "10s",
+  "time": { "from": "now-30m", "to": "now" },
+  "templating": {
+    "list": [
+      {
+        "name": "datasource",
+        "label": "Data source",
+        "type": "datasource",
+        "query": "prometheus",
+        "current": {}
+      },
+      {
+        "name": "namespace",
+        "label": "Environment",
+        "type": "query",
+        "datasource": { "type": "prometheus", "uid": "${datasource}" },
+        "query": { "query": "label_values(process_uptime_seconds, namespace)", "refId": "ns" },
+        "definition": "label_values(process_uptime_seconds, namespace)",
+        "refresh": 2,
+        "current": {}
+      }
+    ]
+  },
+  "panels": [
+    {
+      "type": "stat", "title": "Pods ready", "id": 1,
+      "gridPos": { "x": 0, "y": 0, "w": 4, "h": 4 },
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "targets": [{ "refId": "A", "expr": "sum(kube_deployment_status_replicas_available{namespace=\"$namespace\"})" }],
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "colorMode": "value" }
+    },
+    {
+      "type": "stat", "title": "Requests / s", "id": 2,
+      "gridPos": { "x": 4, "y": 0, "w": 5, "h": 4 },
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "targets": [{ "refId": "A", "expr": "sum(rate(http_server_requests_seconds_count{namespace=\"$namespace\"}[1m]))" }],
+      "fieldConfig": { "defaults": { "unit": "reqps", "decimals": 1 } },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] } }
+    },
+    {
+      "type": "stat", "title": "5xx error rate", "id": 3,
+      "gridPos": { "x": 9, "y": 0, "w": 5, "h": 4 },
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "targets": [{ "refId": "A", "expr": "sum(rate(http_server_requests_seconds_count{namespace=\"$namespace\", status=~\"5..\"}[5m])) / clamp_min(sum(rate(http_server_requests_seconds_count{namespace=\"$namespace\"}[5m])), 1e-9)" }],
+      "fieldConfig": { "defaults": { "unit": "percentunit", "decimals": 2,
+        "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }, { "color": "orange", "value": 0.01 }, { "color": "red", "value": 0.05 }] } } },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "colorMode": "value" }
+    },
+    {
+      "type": "stat", "title": "p95 latency (excl. SSE)", "id": 4,
+      "gridPos": { "x": 14, "y": 0, "w": 5, "h": 4 },
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "targets": [{ "refId": "A", "expr": "histogram_quantile(0.95, sum by (le) (rate(http_server_requests_seconds_bucket{namespace=\"$namespace\", uri!~\".*/events|.*/stream\"}[5m])))" }],
+      "fieldConfig": { "defaults": { "unit": "s", "decimals": 3,
+        "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }, { "color": "orange", "value": 0.5 }, { "color": "red", "value": 1.5 }] } } },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "colorMode": "value" }
+    },
+    {
+      "type": "stat", "title": "Open DB connections", "id": 5,
+      "gridPos": { "x": 19, "y": 0, "w": 5, "h": 4 },
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "targets": [{ "refId": "A", "expr": "sum(hikaricp_connections_active{namespace=\"$namespace\"})" }],
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] } }
+    },
+    {
+      "type": "timeseries", "title": "Requests per second by endpoint", "id": 6,
+      "gridPos": { "x": 0, "y": 4, "w": 12, "h": 9 },
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "targets": [{ "refId": "A", "expr": "sum by (method, uri) (rate(http_server_requests_seconds_count{namespace=\"$namespace\", uri!~\"/actuator.*\"}[1m]))", "legendFormat": "{{method}} {{uri}}" }],
+      "fieldConfig": { "defaults": { "unit": "reqps" } }
+    },
+    {
+      "type": "timeseries", "title": "Latency p50 / p95 / p99 (excl. SSE)", "id": 7,
+      "gridPos": { "x": 12, "y": 4, "w": 12, "h": 9 },
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "targets": [
+        { "refId": "A", "expr": "histogram_quantile(0.50, sum by (le) (rate(http_server_requests_seconds_bucket{namespace=\"$namespace\", uri!~\".*/events|.*/stream|/actuator.*\"}[1m])))", "legendFormat": "p50" },
+        { "refId": "B", "expr": "histogram_quantile(0.95, sum by (le) (rate(http_server_requests_seconds_bucket{namespace=\"$namespace\", uri!~\".*/events|.*/stream|/actuator.*\"}[1m])))", "legendFormat": "p95" },
+        { "refId": "C", "expr": "histogram_quantile(0.99, sum by (le) (rate(http_server_requests_seconds_bucket{namespace=\"$namespace\", uri!~\".*/events|.*/stream|/actuator.*\"}[1m])))", "legendFormat": "p99" }
+      ],
+      "fieldConfig": { "defaults": { "unit": "s" } }
+    },
+    {
+      "type": "timeseries", "title": "Pods: available vs. desired (HPA)", "id": 8,
+      "gridPos": { "x": 0, "y": 13, "w": 8, "h": 8 },
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "targets": [
+        { "refId": "A", "expr": "sum(kube_deployment_status_replicas_available{namespace=\"$namespace\"})", "legendFormat": "available" },
+        { "refId": "B", "expr": "sum(kube_horizontalpodautoscaler_status_desired_replicas{namespace=\"$namespace\"})", "legendFormat": "desired (HPA)" }
+      ],
+      "fieldConfig": { "defaults": { "decimals": 0 } }
+    },
+    {
+      "type": "timeseries", "title": "CPU usage per pod", "id": 9,
+      "gridPos": { "x": 8, "y": 13, "w": 8, "h": 8 },
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "targets": [{ "refId": "A", "expr": "sum by (pod) (rate(container_cpu_usage_seconds_total{namespace=\"$namespace\", container=\"backend\"}[1m]))", "legendFormat": "{{pod}}" }],
+      "fieldConfig": { "defaults": { "unit": "cores" } }
+    },
+    {
+      "type": "timeseries", "title": "JVM heap used per pod", "id": 10,
+      "gridPos": { "x": 16, "y": 13, "w": 8, "h": 8 },
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "targets": [{ "refId": "A", "expr": "sum by (pod) (jvm_memory_used_bytes{namespace=\"$namespace\", area=\"heap\"})", "legendFormat": "{{pod}}" }],
+      "fieldConfig": { "defaults": { "unit": "bytes" } }
+    },
+    {
+      "type": "timeseries", "title": "Responses by status", "id": 11,
+      "gridPos": { "x": 0, "y": 21, "w": 12, "h": 8 },
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "targets": [{ "refId": "A", "expr": "sum by (status) (rate(http_server_requests_seconds_count{namespace=\"$namespace\", uri!~\"/actuator.*\"}[1m]))", "legendFormat": "{{status}}" }],
+      "fieldConfig": { "defaults": { "unit": "reqps" } }
+    },
+    {
+      "type": "timeseries", "title": "JVM threads and GC pause", "id": 12,
+      "gridPos": { "x": 12, "y": 21, "w": 12, "h": 8 },
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "targets": [
+        { "refId": "A", "expr": "sum by (pod) (jvm_threads_live_threads{namespace=\"$namespace\"})", "legendFormat": "threads {{pod}}" },
+        { "refId": "B", "expr": "sum by (pod) (rate(jvm_gc_pause_seconds_sum{namespace=\"$namespace\"}[1m]))", "legendFormat": "GC s/s {{pod}}" }
+      ]
+    }
+  ]
+}

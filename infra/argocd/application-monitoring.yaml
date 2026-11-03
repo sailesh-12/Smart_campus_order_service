@@ -1,0 +1,83 @@
+# Prometheus + Grafana (kube-prometheus-stack), deployed by Argo CD like everything else.
+# Before applying: create the Grafana admin Secret (no password in Git), see infra/local/README.md step 5:
+#   kubectl create namespace monitoring
+#   kubectl -n monitoring create secret generic grafana-admin --from-literal=admin-user=admin --from-literal=admin-password='<choose one>'
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: monitoring
+  namespace: argocd
+spec:
+  project: platform
+  source:
+    repoURL: https://prometheus-community.github.io/helm-charts
+    chart: kube-prometheus-stack
+    targetRevision: 92.16.2
+    helm:
+      releaseName: monitoring
+      valuesObject:
+        # Local kind cluster: these control-plane components listen on localhost only and cannot be scraped
+        kubeEtcd:
+          enabled: false
+        kubeControllerManager:
+          enabled: false
+        kubeScheduler:
+          enabled: false
+        kubeProxy:
+          enabled: false
+        # Alert rules (ours included) are evaluated and visible in Prometheus; no notification routing yet
+        alertmanager:
+          enabled: false
+        prometheus:
+          ingress:
+            enabled: true
+            ingressClassName: nginx
+            hosts:
+              - prometheus.localtest.me
+            paths:
+              - /
+            pathType: Prefix
+          prometheusSpec:
+            # Select ServiceMonitors / PrometheusRules in every namespace, not only ones labelled for this release
+            serviceMonitorSelectorNilUsesHelmValues: false
+            podMonitorSelectorNilUsesHelmValues: false
+            ruleSelectorNilUsesHelmValues: false
+            retention: 2d
+            resources:
+              requests:
+                cpu: 200m
+                memory: 512Mi
+              limits:
+                memory: 1500Mi
+        grafana:
+          admin:
+            existingSecret: grafana-admin
+            userKey: admin-user
+            passwordKey: admin-password
+          ingress:
+            enabled: true
+            ingressClassName: nginx
+            hosts:
+              - grafana.localtest.me
+            path: /
+          sidecar:
+            dashboards:
+              # loads ConfigMaps labelled grafana_dashboard=1 from all namespaces (the backend chart ships one)
+              searchNamespace: ALL
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: monitoring
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
+      # The operator's CRDs are too large for client-side apply (annotation size limit)
+      - ServerSideApply=true
+    retry:
+      limit: 5
+      backoff:
+        duration: 10s
+        factor: 2
+        maxDuration: 3m

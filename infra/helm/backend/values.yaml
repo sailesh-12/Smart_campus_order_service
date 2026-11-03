@@ -86,3 +86,17 @@ podAnnotations: {}
 nodeSelector: {}
 tolerations: []
 affinity: {}
+
+# Prometheus Operator integration (kube-prometheus-stack, see infra/argocd/application-monitoring.yaml).
+# Each object renders only if enabled AND the cluster has the monitoring.coreos.com CRDs, so a cluster without
+# the operator still syncs. The backend serves /actuator/prometheus (micrometer-registry-prometheus).
+metrics:
+  serviceMonitor:
+    enabled: false
+    interval: 15s
+    path: /actuator/prometheus
+  prometheusRule:
+    enabled: false
+  # ConfigMap labelled grafana_dashboard=1; the Grafana sidecar loads it (searchNamespace: ALL)
+  grafanaDashboard:
+    enabled: false

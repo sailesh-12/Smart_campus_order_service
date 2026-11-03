@@ -126,8 +126,9 @@ npm run web          # in a browser at http://localhost:8081
 ```
 
 The app talks to `http://localhost:8080` in the browser and `http://10.0.2.2:8080` (your PC, seen from the
-emulator) on Android. For a real phone, copy `mobile/.env.example` to `mobile/.env` and set
-`EXPO_PUBLIC_API_BASE_URL=http://<your-PC-LAN-IP>:8080`. The web dashboards read `.env.local`
+emulator) on Android. For a real phone (Expo Go), copy `mobile/.env.example` to `mobile/.env.local` (gitignored)
+and set `EXPO_PUBLIC_API_BASE_URL=http://<your-PC-LAN-IP>:8080` (`ipconfig` / `ip addr`; Metro prints the same IP
+as `exp://<ip>:8081`), then restart with `npx expo start -c`. The web dashboards read `.env.local`
 (`NEXT_PUBLIC_API_BASE_URL`), which you only need if the backend is not on localhost:8080.
 
 Keep these ports: the backend only accepts browser requests from 3000, 3001 and 8081 (CORS).
@@ -189,7 +190,8 @@ On Windows use `.\mvnw.cmd` instead of `./mvnw`. CI runs all of these on every p
 | Backend fails with `Connection refused` to 5432 / 6379 / 5672 | The databases are not running: `docker compose up -d` and wait for "healthy". |
 | `Port 8080 was already in use` | Stop the other process, or another backend you started earlier. |
 | Browser shows a CORS error | Run the frontends on their default ports (3000, 3001, 8081). |
-| Student app on Android cannot reach the backend | Emulator: keep `10.0.2.2`. Real phone: use your PC's LAN IP, same Wi-Fi, and allow port 8080 in the firewall. |
+| Student app: "can't reach the server" on login | Emulator: keep `10.0.2.2`. Real phone: set your PC's LAN IP in `mobile/.env.local` and restart with `npx expo start -c` (the IP changes when you switch networks). Open `http://<PC-IP>:8080/actuator/health` in the phone's browser to test: if it does not load, allow inbound TCP 8080 in Windows Firewall (admin PowerShell: `New-NetFirewallRule -DisplayName "SmartCampus backend 8080" -Direction Inbound -Protocol TCP -LocalPort 8080 -Action Allow`), or the Wi-Fi isolates devices (campus/office networks): use a phone hotspot, or USB with `adb reverse tcp:8080 tcp:8080` and `http://localhost:8080`. |
+| Expo Go: `Cannot find native module ...` | Run `npx expo install --fix` in `mobile/`, update Expo Go on the phone, then `npx expo start -c`. |
 | Login says too many attempts (429) | The login rate limit is 10 per minute; wait a minute. |
 | Demo data missing | The seed only loads with the `dev` profile (the default). `docker compose down -v` and start again for a clean database. |
 
@@ -219,7 +221,7 @@ CD deploys it. Staging and prod are promoted manually.
 
 - Pipeline, secrets, promotion and rollback: [docs/ci-cd.md](docs/ci-cd.md)
 - Kubernetes (Helm, Argo CD, secrets): [infra/README.md](infra/README.md)
-- Run the dev environment on a local Kubernetes cluster: [infra/local/README.md](infra/local/README.md)
+- Run the dev environment on a local Kubernetes cluster with Argo CD, Prometheus and Grafana: [infra/local/README.md](infra/local/README.md)
 
 ## License
 
