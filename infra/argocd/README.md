@@ -34,6 +34,8 @@ Create `smartcampus-secrets` in each namespace first (`infra/scripts/create-secr
 ```bash
 kubectl apply -n argocd -f infra/argocd/project.yaml
 kubectl apply -n argocd -f infra/argocd/application-dev.yaml
+# monitoring (Prometheus + Grafana); create the grafana-admin Secret first, see ../local/README.md step 5:
+kubectl apply -n argocd -f infra/argocd/project-platform.yaml -f infra/argocd/application-monitoring.yaml
 # staging / prod when those clusters or namespaces are ready:
 kubectl apply -n argocd -f infra/argocd/application-staging.yaml -f infra/argocd/application-prod.yaml
 ```

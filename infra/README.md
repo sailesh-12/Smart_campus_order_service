@@ -9,16 +9,19 @@ infra/
 │   ├── values-dev.yaml     image.tag edited by backend-ci.yml (deploy-dev)
 │   ├── values-staging.yaml image.tag edited by promote.yml
 │   └── values-prod.yaml    image.tag edited by promote.yml
-├── argocd/                 AppProject + one Application per environment
+├── argocd/                 AppProjects (smartcampus, platform) + one Application per environment + monitoring
 ├── scripts/
 │   ├── create-secrets.sh   builds the smartcampus-secrets Secret from local env vars
+│   ├── secrets-from-env-file.sh  same, reading backend/.env
 │   └── set-image-tag.sh    the only way CI edits a values file
 ├── local/                  kind / minikube walkthrough
 └── demo/                   lunch-rush autoscaling, failed rollout, pod replacement
 ```
 
 Data services are external managed services (Neon Postgres, Upstash Redis, CloudAMQP RabbitMQ). Nothing
-here deploys a database, cache or broker.
+here deploys a database, cache or broker. Monitoring (Prometheus + Grafana, kube-prometheus-stack) is an Argo CD
+Application of its own: [`argocd/application-monitoring.yaml`](argocd/application-monitoring.yaml); the backend chart adds a
+ServiceMonitor, alert rules and a Grafana dashboard (`metrics.*` values, enabled in dev).
 
 ## Secrets
 

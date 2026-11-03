@@ -35,3 +35,8 @@ spec:
       kind: HorizontalPodAutoscaler
     - group: policy
       kind: PodDisruptionBudget
+    # Scrape config and alert rules for the kube-prometheus-stack (rendered only when its CRDs exist)
+    - group: monitoring.coreos.com
+      kind: ServiceMonitor
+    - group: monitoring.coreos.com
+      kind: PrometheusRule

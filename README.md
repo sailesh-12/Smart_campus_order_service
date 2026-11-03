@@ -221,7 +221,7 @@ CD deploys it. Staging and prod are promoted manually.
 
 - Pipeline, secrets, promotion and rollback: [docs/ci-cd.md](docs/ci-cd.md)
 - Kubernetes (Helm, Argo CD, secrets): [infra/README.md](infra/README.md)
-- Run the dev environment on a local Kubernetes cluster: [infra/local/README.md](infra/local/README.md)
+- Run the dev environment on a local Kubernetes cluster with Argo CD, Prometheus and Grafana: [infra/local/README.md](infra/local/README.md)
 
 ## License
 

@@ -1,0 +1,23 @@
+# Cluster add-ons (monitoring). Kept apart from the smartcampus project, which may only deploy this repository's
+# chart into the app namespaces: the monitoring stack installs CRDs, cluster roles and webhooks.
+apiVersion: argoproj.io/v1alpha1
+kind: AppProject
+metadata:
+  name: platform
+  namespace: argocd
+spec:
+  description: Cluster add-ons (kube-prometheus-stack)
+  sourceRepos:
+    - https://prometheus-community.github.io/helm-charts
+  destinations:
+    - server: https://kubernetes.default.svc
+      namespace: monitoring
+    # the chart creates a Service for CoreDNS / kubelet scraping in kube-system
+    - server: https://kubernetes.default.svc
+      namespace: kube-system
+  clusterResourceWhitelist:
+    - group: "*"
+      kind: "*"
+  namespaceResourceWhitelist:
+    - group: "*"
+      kind: "*"

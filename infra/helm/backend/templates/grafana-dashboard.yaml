@@ -1,0 +1,13 @@
+{{- if .Values.metrics.grafanaDashboard.enabled }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "backend.fullname" . }}-grafana-dashboard
+  labels:
+    {{- include "backend.labels" . | nindent 4 }}
+    # Picked up by the kube-prometheus-stack Grafana sidecar
+    grafana_dashboard: "1"
+data:
+  smartcampus-backend.json: |-
+{{ .Files.Get "files/grafana-dashboard.json" | indent 4 }}
+{{- end }}

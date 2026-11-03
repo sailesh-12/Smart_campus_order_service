@@ -30,3 +30,12 @@ config:
 ingress:
   # *.localtest.me resolves to 127.0.0.1, which suits kind/minikube with ingress-nginx on localhost
   host: smartcampus.localtest.me
+
+# Scraped by the kube-prometheus-stack in the monitoring namespace; dashboard "Smart Campus backend" in Grafana
+metrics:
+  serviceMonitor:
+    enabled: true
+  prometheusRule:
+    enabled: true
+  grafanaDashboard:
+    enabled: true
