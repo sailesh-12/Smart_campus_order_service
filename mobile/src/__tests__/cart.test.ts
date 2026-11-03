@@ -1,7 +1,7 @@
 // eslint-disable-next-line @typescript-eslint/no-require-imports -- jest.mock factories must use require
 jest.mock('@react-native-async-storage/async-storage', () => require('@react-native-async-storage/async-storage/jest/async-storage-mock'));
 let mockUuidCounter = 0;
-jest.mock('expo-crypto', () => ({ randomUUID: () => `uuid-${++mockUuidCounter}` }));
+jest.mock('@/lib/uuid', () => ({ newUuid: () => `uuid-${++mockUuidCounter}` }));
 
 // eslint-disable-next-line import/first -- mocks above must be registered before the store is imported
 import { MAX_QTY, cartCount, cartSubtotalPaise, useCart } from '@/store/cart';
